@@ -31,6 +31,12 @@
             flex-grow: 1;
             padding: 20px;
         }
+        .remove-btn {
+            color: red;
+            cursor: pointer;
+            margin-left: 10px;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
@@ -59,17 +65,41 @@
                 dateClick: function(info) {
                     document.querySelectorAll('.draggable').forEach(el => {
                         el.onclick = function() {
-                            calendar.addEvent({
+                            let event = calendar.addEvent({
                                 title: el.dataset.name,
                                 start: info.dateStr,
                                 backgroundColor: '#007bff'
                             });
+                            saveEvents(calendar);
                         };
                     });
+                },
+                eventClick: function(info) {
+                    if (confirm("Opravdu chcete odstranit tuto směnu?")) {
+                        info.event.remove();
+                        saveEvents(calendar);
+                    }
                 }
             });
+            
+            loadEvents(calendar);
             calendar.render();
         });
+        
+        function saveEvents(calendar) {
+            let events = calendar.getEvents().map(event => ({
+                title: event.title,
+                start: event.start.toISOString()
+            }));
+            localStorage.setItem('savedEvents', JSON.stringify(events));
+        }
+        
+        function loadEvents(calendar) {
+            let savedEvents = JSON.parse(localStorage.getItem('savedEvents') || '[]');
+            savedEvents.forEach(eventData => {
+                calendar.addEvent(eventData);
+            });
+        }
     </script>
 </body>
 </html>
