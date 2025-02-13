@@ -23,7 +23,7 @@
             margin: 5px;
             background: #007bff;
             color: white;
-            cursor: grab;
+            cursor: pointer;
             border-radius: 5px;
             text-align: center;
         }
@@ -35,7 +35,7 @@
 </head>
 <body>
     <div class="sidebar">
-        <h3>Pracovníci</h3>
+        <h3>Zaměstnanci</h3>
         <div id="external-events">
             <div class="draggable" data-name="Katka">Katka</div>
             <div class="draggable" data-name="Jiřina">Jiřina</div>
@@ -54,29 +54,21 @@
             let calendar = new FullCalendar.Calendar(calendarEl, {
                 initialView: 'dayGridMonth',
                 editable: true,
+                selectable: true,
                 droppable: true,
-                eventReceive: function(info) {
-                    info.event.setProp('backgroundColor', '#007bff');
+                dateClick: function(info) {
+                    document.querySelectorAll('.draggable').forEach(el => {
+                        el.onclick = function() {
+                            calendar.addEvent({
+                                title: el.dataset.name,
+                                start: info.dateStr,
+                                backgroundColor: '#007bff'
+                            });
+                        };
+                    });
                 }
             });
             calendar.render();
-
-            document.querySelectorAll('.draggable').forEach(el => {
-                el.addEventListener('dragstart', function(event) {
-                    event.dataTransfer.setData('text/plain', event.target.dataset.name);
-                });
-            });
-
-            calendarEl.addEventListener('dragover', function(event) {
-                event.preventDefault();
-            });
-
-            calendarEl.addEventListener('drop', function(event) {
-                event.preventDefault();
-                let name = event.dataTransfer.getData('text/plain');
-                let date = calendar.getDate();
-                calendar.addEvent({ title: name, start: date });
-            });
         });
     </script>
 </body>
