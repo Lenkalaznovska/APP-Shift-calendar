@@ -46,6 +46,9 @@
             border-radius: 5px;
             text-align: center;
         }
+        .kitchen .draggable { background: #ffcc00; }
+        .couriers .draggable { background: #28a745; }
+        .bar .draggable { background: #dc3545; }
         #calendar {
             flex-grow: 1;
             padding: 20px;
@@ -81,16 +84,23 @@
             <h3>Zaměstnanci</h3>
             <div class="section kitchen">
                 <h4>Kuchyně</h4>
-                <div class="draggable" data-name="Hanka" style="background:#ffcc00">Hanka</div>
-                <div class="draggable" data-name="Marie" style="background:#ffcc00">Marie</div>
+                <div class="draggable" data-name="Hanka">Hanka</div>
+                <div class="draggable" data-name="Marie">Marie</div>
+                <div class="draggable" data-name="Martina">Martina</div>
+                <div class="draggable" data-name="Martin">Martin</div>
+                <div class="draggable" data-name="Renata">Renata</div>
             </div>
             <div class="section couriers">
                 <h4>Kurýři</h4>
-                <div class="draggable" data-name="Jirka" style="background:#28a745">Jirka</div>
+                <div class="draggable" data-name="Jirka">Jirka</div>
+                <div class="draggable" data-name="Katka">Katka</div>
+                <div class="draggable" data-name="Michaela">Michaela</div>
+                <div class="draggable" data-name="Pavel">Pavel</div>
             </div>
             <div class="section bar">
                 <h4>Bar</h4>
-                <div class="draggable" data-name="Jiřina" style="background:#dc3545">Jiřina</div>
+                <div class="draggable" data-name="Jiřina">Jiřina</div>
+                <div class="draggable" data-name="Katka">Katka</div>
             </div>
         </div>
         <div id="calendar"></div>
@@ -104,12 +114,12 @@
         document.addEventListener('DOMContentLoaded', function() {
             let calendarEl = document.getElementById('calendar');
             let calendar = new FullCalendar.Calendar(calendarEl, {
-                initialView: window.innerWidth < 768 ? 'timeGridWeek' : 'dayGridMonth',
+                initialView: 'dayGridMonth',
                 editable: true,
                 selectable: true,
                 droppable: true,
                 locale: 'cs',
-                events: JSON.parse(localStorage.getItem('savedEvents') || '[]'),
+                events: [],
                 dateClick: function(info) {
                     document.querySelectorAll('.draggable').forEach(el => {
                         el.onclick = function() {
@@ -119,7 +129,8 @@
                                     title: el.dataset.name,
                                     start: info.dateStr,
                                     backgroundColor: el.style.backgroundColor,
-                                    textColor: '#fff'
+                                    textColor: '#fff',
+                                    display: 'block'
                                 });
                                 saveEvents(calendar);
                             } else {
@@ -129,20 +140,19 @@
                     });
                 },
                 eventClick: function(info) {
-                    if (confirm("Opravdu chcete odstranit tuto směnu?")) {
-                        info.event.remove();
-                        saveEvents(calendar);
+                    let password = prompt("Zadejte heslo pro smazání směny:");
+                    if (password === "12345") {
+                        if (confirm("Opravdu chcete odstranit tuto směnu?")) {
+                            info.event.remove();
+                            saveEvents(calendar);
+                        }
+                    } else {
+                        alert("Nesprávné heslo!");
                     }
                 }
             });
             
-            window.addEventListener('resize', function() {
-                let newView = window.innerWidth < 768 ? 'timeGridWeek' : 'dayGridMonth';
-                if (calendar.view.type !== newView) {
-                    calendar.changeView(newView);
-                }
-            });
-            
+            loadEvents(calendar);
             calendar.render();
         });
         
@@ -153,6 +163,13 @@
                 backgroundColor: event.backgroundColor
             }));
             localStorage.setItem('savedEvents', JSON.stringify(events));
+        }
+        
+        function loadEvents(calendar) {
+            let savedEvents = JSON.parse(localStorage.getItem('savedEvents') || '[]');
+            savedEvents.forEach(eventData => {
+                calendar.addEvent(eventData);
+            });
         }
     </script>
 </body>
