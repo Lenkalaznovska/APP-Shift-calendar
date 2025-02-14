@@ -11,15 +11,16 @@
     <style>
         body {
             font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
             display: flex;
             flex-direction: column;
             align-items: center;
-            margin: 0;
-            padding: 0;
         }
         .container {
             display: flex;
             width: 100%;
+            flex-direction: row;
         }
         .sidebar {
             width: 300px;
@@ -27,6 +28,17 @@
             background: #f8f9fa;
             border-right: 1px solid #ddd;
         }
+        .sidebar h3 {
+            text-align: center;
+        }
+        .section {
+            margin-bottom: 15px;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .kitchen { background: #ffcc00; }
+        .couriers { background: #28a745; }
+        .bar { background: #dc3545; }
         .draggable {
             padding: 10px;
             margin: 5px;
@@ -35,6 +47,9 @@
             border-radius: 5px;
             text-align: center;
         }
+        .kitchen .draggable { background: #ffcc00; }
+        .couriers .draggable { background: #28a745; }
+        .bar .draggable { background: #dc3545; }
         #calendar {
             flex-grow: 1;
             padding: 20px;
@@ -49,13 +64,16 @@
             width: 100%;
         }
         @media (max-width: 768px) {
+            .container {
+                flex-direction: column;
+            }
             .sidebar {
-                display: none;
-                position: absolute;
-                top: 0;
-                left: 0;
-                height: 100vh;
-                z-index: 1000;
+                order: 2;
+                width: 100%;
+                border-right: none;
+            }
+            #calendar {
+                order: 1;
             }
             .menu-button {
                 display: block;
@@ -68,10 +86,15 @@
     <div class="container">
         <div class="sidebar" id="sidebar">
             <h3>Zaměstnanci</h3>
-            <div class="draggable" data-name="Hanka">Hanka</div>
-            <div class="draggable" data-name="Marie">Marie</div>
-            <div class="draggable" data-name="Martina">Martina</div>
-            <div class="draggable" data-name="Martin">Martin</div>
+            <div class="section kitchen">
+                <h4>Kuchyně</h4>
+                <div class="draggable" data-name="Hanka">Hanka</div>
+                <div class="draggable" data-name="Marie">Marie</div>
+            </div>
+            <div class="section couriers">
+                <h4>Kurýři</h4>
+                <div class="draggable" data-name="Jirka">Jirka</div>
+            </div>
         </div>
         <div id="calendar"></div>
     </div>
@@ -80,15 +103,16 @@
             let sidebar = document.getElementById("sidebar");
             sidebar.style.display = sidebar.style.display === "block" ? "none" : "block";
         }
-
+        
         document.addEventListener('DOMContentLoaded', function() {
             let calendarEl = document.getElementById('calendar');
             let calendar = new FullCalendar.Calendar(calendarEl, {
-                initialView: 'dayGridMonth',
+                initialView: window.innerWidth < 768 ? 'timeGridWeek' : 'dayGridMonth',
                 editable: true,
                 selectable: true,
                 droppable: true,
                 locale: 'cs',
+                events: JSON.parse(localStorage.getItem('savedEvents') || '[]'),
                 dateClick: function(info) {
                     document.querySelectorAll('.draggable').forEach(el => {
                         el.onclick = function() {
@@ -97,7 +121,7 @@
                                 calendar.addEvent({
                                     title: el.dataset.name,
                                     start: info.dateStr,
-                                    backgroundColor: '#ffcc00',
+                                    backgroundColor: el.style.backgroundColor,
                                     textColor: '#fff',
                                     display: 'block'
                                 });
@@ -120,7 +144,11 @@
                     }
                 }
             });
-            loadEvents(calendar);
+            
+            window.addEventListener('resize', function() {
+                calendar.changeView(window.innerWidth < 768 ? 'timeGridWeek' : 'dayGridMonth');
+            });
+            
             calendar.render();
         });
         
@@ -131,13 +159,6 @@
                 backgroundColor: event.backgroundColor
             }));
             localStorage.setItem('savedEvents', JSON.stringify(events));
-        }
-        
-        function loadEvents(calendar) {
-            let savedEvents = JSON.parse(localStorage.getItem('savedEvents') || '[]');
-            savedEvents.forEach(eventData => {
-                calendar.addEvent(eventData);
-            });
         }
     </script>
 </body>
