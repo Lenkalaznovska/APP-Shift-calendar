@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Plánovač směn</title>
+    <title>Kalendář směn</title>
     <link href="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@fullcalendar/interaction@5.11.3/main.global.min.js"></script>
@@ -16,7 +16,6 @@
             align-items: center;
             margin: 0;
             padding: 0;
-            background: #f4f4f4;
         }
         .container {
             display: flex;
@@ -25,9 +24,8 @@
         .sidebar {
             width: 300px;
             padding: 20px;
-            background: #ffffff;
+            background: #f8f9fa;
             border-right: 1px solid #ddd;
-            box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
         }
         .sidebar h3 {
             text-align: center;
@@ -36,8 +34,10 @@
             margin-bottom: 15px;
             padding: 10px;
             border-radius: 5px;
-            background: #e9ecef;
         }
+        .kitchen { background: #ffcc00; }
+        .couriers { background: #28a745; }
+        .bar { background: #dc3545; }
         .draggable {
             padding: 10px;
             margin: 5px;
@@ -45,26 +45,42 @@
             cursor: pointer;
             border-radius: 5px;
             text-align: center;
-            font-weight: bold;
         }
-        .kitchen { background: #ffcc00; }
-        .couriers { background: #28a745; }
-        .bar { background: #dc3545; }
         .kitchen .draggable { background: #ffcc00; }
         .couriers .draggable { background: #28a745; }
         .bar .draggable { background: #dc3545; }
         #calendar {
             flex-grow: 1;
             padding: 20px;
-            background: white;
-            border-radius: 5px;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        .menu-button {
+            display: none;
+            background: #007bff;
+            color: white;
+            padding: 10px;
+            border: none;
+            cursor: pointer;
+            width: 100%;
+        }
+        @media (max-width: 768px) {
+            .sidebar {
+                display: none;
+                position: absolute;
+                top: 0;
+                left: 0;
+                height: 100vh;
+                z-index: 1000;
+            }
+            .menu-button {
+                display: block;
+            }
         }
     </style>
 </head>
 <body>
+    <button class="menu-button" onclick="toggleMenu()">Menu</button>
     <div class="container">
-        <div class="sidebar">
+        <div class="sidebar" id="sidebar">
             <h3>Zaměstnanci</h3>
             <div class="section kitchen">
                 <h4>Kuchyně</h4>
@@ -90,6 +106,11 @@
         <div id="calendar"></div>
     </div>
     <script>
+        function toggleMenu() {
+            let sidebar = document.getElementById("sidebar");
+            sidebar.style.display = sidebar.style.display === "block" ? "none" : "block";
+        }
+        
         document.addEventListener('DOMContentLoaded', function() {
             let calendarEl = document.getElementById('calendar');
             let calendar = new FullCalendar.Calendar(calendarEl, {
@@ -130,6 +151,7 @@
                     }
                 }
             });
+            
             loadEvents(calendar);
             calendar.render();
         });
