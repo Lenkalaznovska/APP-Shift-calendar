@@ -12,12 +12,11 @@
         body {
             font-family: Arial, sans-serif;
             display: flex;
-            flex-direction: column;
-            align-items: center;
+            flex-direction: row;
+            align-items: flex-start;
         }
         .sidebar {
-            width: 100%;
-            max-width: 300px;
+            width: 300px;
             padding: 20px;
             background: #f8f9fa;
             border-right: 1px solid #ddd;
@@ -42,8 +41,7 @@
         .couriers .draggable { background: #28a745; }
         .bar .draggable { background: #dc3545; }
         #calendar {
-            width: 100%;
-            max-width: 900px;
+            flex-grow: 1;
             padding: 20px;
         }
     </style>
@@ -94,6 +92,7 @@
                                     title: el.dataset.name,
                                     start: info.dateStr,
                                     backgroundColor: el.style.backgroundColor,
+                                    textColor: '#fff',
                                     display: 'block'
                                 });
                                 saveEvents(calendar);
