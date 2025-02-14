@@ -13,29 +13,21 @@
             font-family: Arial, sans-serif;
             margin: 0;
             padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
         }
         .container {
             display: flex;
             flex-direction: column;
-            align-items: center;
             width: 100%;
-        }
-        .layout {
-            display: flex;
-            width: 100%;
-            max-width: 1200px;
         }
         .sidebar {
-            width: 300px;
-            padding: 20px;
+            width: 100%;
             background: #f8f9fa;
-            border-right: 1px solid #ddd;
-        }
-        .sidebar h3 {
-            text-align: center;
+            padding: 10px;
         }
         .section {
-            margin-bottom: 15px;
             padding: 10px;
             border-radius: 5px;
         }
@@ -54,60 +46,43 @@
         .couriers .draggable { background: #28a745; }
         .bar .draggable { background: #dc3545; }
         #calendar {
-            flex-grow: 1;
-            padding: 20px;
-        }
-        .employees-mobile {
-            display: none;
-            width: 100%;
             padding: 10px;
-            background: #f8f9fa;
-            border-top: 1px solid #ddd;
         }
-        @media (max-width: 768px) {
-            .layout {
-                flex-direction: column;
+        .fc-day-other {
+            background: #e9ecef !important;
+            pointer-events: none;
+        }
+        @media (min-width: 769px) {
+            .container {
+                flex-direction: row;
             }
             .sidebar {
-                display: none;
-            }
-            .employees-mobile {
-                display: block;
+                width: 300px;
             }
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="layout">
-            <div class="sidebar" id="sidebar">
-                <h3>Zaměstnanci</h3>
-                <div class="section kitchen">
-                    <h4>Kuchyně</h4>
-                    <div class="draggable" data-name="Hanka">Hanka</div>
-                    <div class="draggable" data-name="Marie">Marie</div>
-                </div>
-                <div class="section couriers">
-                    <h4>Kurýři</h4>
-                    <div class="draggable" data-name="Jirka">Jirka</div>
-                    <div class="draggable" data-name="Katka">Katka</div>
-                </div>
-            </div>
-            <div id="calendar"></div>
-        </div>
-        <div class="employees-mobile">
+        <div class="sidebar" id="sidebar">
             <h3>Zaměstnanci</h3>
             <div class="section kitchen">
                 <h4>Kuchyně</h4>
                 <div class="draggable" data-name="Hanka">Hanka</div>
                 <div class="draggable" data-name="Marie">Marie</div>
+                <div class="draggable" data-name="Martina">Martina</div>
             </div>
             <div class="section couriers">
                 <h4>Kurýři</h4>
                 <div class="draggable" data-name="Jirka">Jirka</div>
                 <div class="draggable" data-name="Katka">Katka</div>
             </div>
+            <div class="section bar">
+                <h4>Bar</h4>
+                <div class="draggable" data-name="Jiřina">Jiřina</div>
+            </div>
         </div>
+        <div id="calendar"></div>
     </div>
     <script>
         document.addEventListener('DOMContentLoaded', function() {
@@ -118,12 +93,13 @@
                 selectable: true,
                 droppable: true,
                 locale: 'cs',
-                events: [],
-                validRange: {
-                    start: new Date().toISOString().slice(0, 10),
-                    end: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().slice(0, 10)
+                dayCellClassNames: function(arg) {
+                    if (!arg.isCurrentMonth) {
+                        return ['fc-day-other'];
+                    }
                 },
                 dateClick: function(info) {
+                    if (!info.date.getMonth() === calendar.getDate().getMonth()) return;
                     document.querySelectorAll('.draggable').forEach(el => {
                         el.onclick = function() {
                             let existingEvents = calendar.getEvents().filter(event => event.startStr === info.dateStr && event.title === el.dataset.name);
