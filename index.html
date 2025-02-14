@@ -99,13 +99,18 @@
                 dateClick: function(info) {
                     document.querySelectorAll('.draggable').forEach(el => {
                         el.onclick = function() {
-                            let event = calendar.addEvent({
-                                title: el.dataset.name,
-                                start: info.dateStr,
-                                backgroundColor: el.style.backgroundColor,
-                                display: 'block'
-                            });
-                            saveEvents(calendar);
+                            let existingEvents = calendar.getEvents().filter(event => event.startStr === info.dateStr && event.title === el.dataset.name);
+                            if (existingEvents.length === 0) {
+                                calendar.addEvent({
+                                    title: el.dataset.name,
+                                    start: info.dateStr,
+                                    backgroundColor: el.style.backgroundColor,
+                                    display: 'block'
+                                });
+                                saveEvents(calendar);
+                            } else {
+                                alert("Tento zaměstnanec již má přiřazenou směnu na tento den!");
+                            }
                         };
                     });
                 },
