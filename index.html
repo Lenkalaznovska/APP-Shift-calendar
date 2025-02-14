@@ -11,15 +11,7 @@
         body {
             font-family: Arial, sans-serif;
             display: flex;
-            flex-direction: column;
-            align-items: center;
-            margin: 0;
-            padding: 0;
-        }
-        .container {
-            display: flex;
-            width: 100%;
-            max-width: 1200px;
+            flex-wrap: wrap;
         }
         .sidebar {
             width: 250px;
@@ -32,9 +24,15 @@
             padding: 10px;
             border-radius: 5px;
         }
-        .kitchen { background: #ffcc00; }
-        .couriers { background: #28a745; }
-        .bar { background: #dc3545; }
+        .kitchen {
+            background: #ffcc00;
+        }
+        .couriers {
+            background: #28a745;
+        }
+        .bar {
+            background: #dc3545;
+        }
         .draggable {
             padding: 10px;
             margin: 5px;
@@ -43,93 +41,87 @@
             border-radius: 5px;
             text-align: center;
         }
-        .kitchen .draggable { background: #ffcc00; }
-        .couriers .draggable { background: #28a745; }
-        .bar .draggable { background: #dc3545; }
+        .kitchen .draggable {
+            background: #ffcc00;
+        }
+        .couriers .draggable {
+            background: #28a745;
+        }
+        .bar .draggable {
+            background: #dc3545;
+        }
         #calendar {
             flex-grow: 1;
             padding: 20px;
         }
-        .notification {
-            position: fixed;
-            top: 10px;
-            right: 10px;
-            background: rgba(0, 0, 0, 0.7);
-            color: white;
-            padding: 10px;
-            border-radius: 5px;
-            display: none;
-        }
         @media (max-width: 768px) {
-            .container {
-                flex-direction: column;
-            }
             .sidebar {
                 width: 100%;
-                text-align: center;
+                border-right: none;
+                border-bottom: 1px solid #ddd;
             }
         }
     </style>
 </head>
 <body>
-    <div class="notification" id="notification"></div>
-    <div class="container">
-        <div class="sidebar">
-            <h3>Zaměstnanci</h3>
-            <div class="section kitchen">
-                <h4>Kuchyň</h4>
-                <div class="draggable" data-name="Martin">Martin</div>
-                <div class="draggable" data-name="Hanka">Hanka</div>
-            </div>
-            <div class="section couriers">
-                <h4>Kurýři</h4>
-                <div class="draggable" data-name="Jirka">Jirka</div>
-            </div>
-            <div class="section bar">
-                <h4>Bar</h4>
-                <div class="draggable" data-name="Katka">Katka</div>
-            </div>
+    <div class="sidebar">
+        <h3>Zaměstnanci</h3>
+        <div class="section kitchen">
+            <h4>Kuchyně</h4>
+            <div class="draggable" data-name="Martin">Martin</div>
+            <div class="draggable" data-name="Hanka">Hanka</div>
+            <div class="draggable" data-name="Marie">Marie</div>
+            <div class="draggable" data-name="Renata">Renata</div>
+            <div class="draggable" data-name="Martina">Martina</div>
         </div>
-        <div id="calendar"></div>
+        <div class="section couriers">
+            <h4>Kurýři</h4>
+            <div class="draggable" data-name="Katka">Katka</div>
+            <div class="draggable" data-name="Jirka">Jirka</div>
+            <div class="draggable" data-name="Pavel">Pavel</div>
+            <div class="draggable" data-name="Michaela">Michaela</div>
+        </div>
+        <div class="section bar">
+            <h4>Bar</h4>
+            <div class="draggable" data-name="Jiřina">Jiřina</div>
+            <div class="draggable" data-name="Katka">Katka</div>
+        </div>
     </div>
+    <div id="calendar"></div>
+    
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             let calendarEl = document.getElementById('calendar');
-            let notificationEl = document.getElementById('notification');
             let calendar = new FullCalendar.Calendar(calendarEl, {
                 initialView: 'dayGridMonth',
-                editable: true,
+                editable: false,
                 selectable: true,
                 droppable: true,
                 dateClick: function(info) {
                     document.querySelectorAll('.draggable').forEach(el => {
                         el.onclick = function() {
                             let event = calendar.addEvent({
-                                title: el.dataset.name + " (čeká na schválení)",
+                                title: el.dataset.name,
                                 start: info.dateStr,
                                 backgroundColor: el.style.backgroundColor
                             });
-                            showNotification(el.dataset.name + " si přidal směnu, čeká na schválení.");
                             saveEvents(calendar);
                         };
                     });
                 },
                 eventClick: function(info) {
-                    if (confirm("Potvrdit nebo odstranit směnu?")) {
-                        let isAdmin = confirm("Jste administrátor Katka?");
-                        if (isAdmin) {
-                            if (info.event.title.includes("(čeká na schválení)")) {
-                                info.event.setProp("title", info.event.title.replace(" (čeká na schválení)", " (potvrzeno)"));
-                                showNotification("Směna pro " + info.event.title + " byla potvrzena.");
-                            } else {
-                                info.event.remove();
-                                showNotification("Směna pro " + info.event.title + " byla smazána.");
-                            }
+                    let admin = prompt("Zadejte jméno administrátora pro smazání směny:");
+                    if (admin === "Katka") {
+                        if (confirm("Opravdu chcete odstranit tuto směnu?")) {
+                            info.event.remove();
                             saveEvents(calendar);
                         }
+                    } else {
+                        alert("Pouze Katka může mazat směny!");
                     }
                 }
             });
+            
             loadEvents(calendar);
             calendar.render();
         });
@@ -148,13 +140,6 @@
             savedEvents.forEach(eventData => {
                 calendar.addEvent(eventData);
             });
-        }
-        
-        function showNotification(message) {
-            let notificationEl = document.getElementById('notification');
-            notificationEl.innerText = message;
-            notificationEl.style.display = 'block';
-            setTimeout(() => { notificationEl.style.display = 'none'; }, 3000);
         }
     </script>
 </body>
