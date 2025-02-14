@@ -27,11 +27,6 @@
             background: #f8f9fa;
             border-right: 1px solid #ddd;
         }
-        .section {
-            margin-bottom: 15px;
-            padding: 10px;
-            border-radius: 5px;
-        }
         .draggable {
             padding: 10px;
             margin: 5px;
@@ -44,71 +39,91 @@
             flex-grow: 1;
             padding: 20px;
         }
-        .past-day {
-            background-color: #ddd !important;
-            pointer-events: none;
+        .menu-button {
+            display: none;
+            background: #007bff;
+            color: white;
+            padding: 10px;
+            border: none;
+            cursor: pointer;
+            width: 100%;
+        }
+        @media (max-width: 768px) {
+            .sidebar {
+                display: none;
+                position: absolute;
+                top: 0;
+                left: 0;
+                height: 100vh;
+                z-index: 1000;
+            }
+            .menu-button {
+                display: block;
+            }
         }
     </style>
 </head>
 <body>
+    <button class="menu-button" onclick="toggleMenu()">Menu</button>
     <div class="container">
         <div class="sidebar" id="sidebar">
             <h3>Zaměstnanci</h3>
-            <div class="section kitchen">
-                <h4>Kuchyně</h4>
-                <div class="draggable" data-name="Hanka">Hanka</div>
-                <div class="draggable" data-name="Marie">Marie</div>
-            </div>
+            <div class="draggable" data-name="Hanka">Hanka</div>
+            <div class="draggable" data-name="Marie">Marie</div>
+            <div class="draggable" data-name="Martina">Martina</div>
+            <div class="draggable" data-name="Martin">Martin</div>
         </div>
         <div id="calendar"></div>
     </div>
     <script>
+        function toggleMenu() {
+            let sidebar = document.getElementById("sidebar");
+            sidebar.style.display = sidebar.style.display === "block" ? "none" : "block";
+        }
+
         document.addEventListener('DOMContentLoaded', function() {
             let calendarEl = document.getElementById('calendar');
-            let today = new Date().toISOString().split('T')[0];
             let calendar = new FullCalendar.Calendar(calendarEl, {
                 initialView: 'dayGridMonth',
                 editable: true,
                 selectable: true,
                 droppable: true,
                 locale: 'cs',
-                events: getSavedEvents(),
                 dateClick: function(info) {
-                    if (info.dateStr < today) return;
                     document.querySelectorAll('.draggable').forEach(el => {
                         el.onclick = function() {
-                            let exists = calendar.getEvents().some(event => event.startStr === info.dateStr && event.title === el.dataset.name);
-                            if (!exists) {
+                            let existingEvents = calendar.getEvents().filter(event => event.startStr === info.dateStr && event.title === el.dataset.name);
+                            if (existingEvents.length === 0) {
                                 calendar.addEvent({
                                     title: el.dataset.name,
                                     start: info.dateStr,
-                                    backgroundColor: '#007bff',
-                                    textColor: '#fff'
+                                    backgroundColor: '#ffcc00',
+                                    textColor: '#fff',
+                                    display: 'block'
                                 });
                                 saveEvents(calendar);
                             } else {
-                                alert("Tento zaměstnanec již má směnu!");
+                                alert("Tento zaměstnanec již má přiřazenou směnu na tento den!");
                             }
                         };
                     });
                 },
                 eventClick: function(info) {
                     let password = prompt("Zadejte heslo pro smazání směny:");
-                    if (password === "12345" && confirm("Opravdu chcete odstranit tuto směnu?")) {
-                        info.event.remove();
-                        saveEvents(calendar);
+                    if (password === "12345") {
+                        if (confirm("Opravdu chcete odstranit tuto směnu?")) {
+                            info.event.remove();
+                            saveEvents(calendar);
+                        }
                     } else {
                         alert("Nesprávné heslo!");
                     }
-                },
-                dayCellDidMount: function(info) {
-                    if (info.date.toISOString().split('T')[0] < today) {
-                        info.el.classList.add('past-day');
-                    }
                 }
             });
+            loadEvents(calendar);
             calendar.render();
         });
+        
         function saveEvents(calendar) {
             let events = calendar.getEvents().map(event => ({
                 title: event.title,
@@ -116,10 +131,13 @@
                 backgroundColor: event.backgroundColor
             }));
             localStorage.setItem('savedEvents', JSON.stringify(events));
-            sessionStorage.setItem('savedEvents', JSON.stringify(events));
         }
-        function getSavedEvents() {
-            return JSON.parse(localStorage.getItem('savedEvents') || sessionStorage.getItem('savedEvents') || '[]');
+        
+        function loadEvents(calendar) {
+            let savedEvents = JSON.parse(localStorage.getItem('savedEvents') || '[]');
+            savedEvents.forEach(eventData => {
+                calendar.addEvent(eventData);
+            });
         }
     </script>
 </body>
