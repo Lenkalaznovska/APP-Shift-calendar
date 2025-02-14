@@ -7,11 +7,11 @@
     <link href="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@fullcalendar/interaction@5.11.3/main.global.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@fullcalendar/core/locales/cs.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
             display: flex;
-            flex-wrap: wrap;
         }
         .sidebar {
             width: 250px;
@@ -54,13 +54,6 @@
             flex-grow: 1;
             padding: 20px;
         }
-        @media (max-width: 768px) {
-            .sidebar {
-                width: 100%;
-                border-right: none;
-                border-bottom: 1px solid #ddd;
-            }
-        }
     </style>
 </head>
 <body>
@@ -94,30 +87,37 @@
             let calendarEl = document.getElementById('calendar');
             let calendar = new FullCalendar.Calendar(calendarEl, {
                 initialView: 'dayGridMonth',
-                editable: false,
+                editable: true,
                 selectable: true,
                 droppable: true,
+                locale: 'cs',
+                events: [
+                    { title: 'Nový rok', start: '2025-01-01', allDay: true, backgroundColor: '#ff0000' },
+                    { title: 'Velikonoční pondělí', start: '2025-04-21', allDay: true, backgroundColor: '#ff0000' },
+                    { title: 'Den osvobození', start: '2025-05-08', allDay: true, backgroundColor: '#ff0000' }
+                ],
                 dateClick: function(info) {
                     document.querySelectorAll('.draggable').forEach(el => {
                         el.onclick = function() {
                             let event = calendar.addEvent({
                                 title: el.dataset.name,
                                 start: info.dateStr,
-                                backgroundColor: el.style.backgroundColor
+                                backgroundColor: el.style.backgroundColor,
+                                display: 'block'
                             });
                             saveEvents(calendar);
                         };
                     });
                 },
                 eventClick: function(info) {
-                    let admin = prompt("Zadejte jméno administrátora pro smazání směny:");
-                    if (admin === "Katka") {
+                    let password = prompt("Zadejte heslo pro smazání směny:");
+                    if (password === "12345") {
                         if (confirm("Opravdu chcete odstranit tuto směnu?")) {
                             info.event.remove();
                             saveEvents(calendar);
                         }
                     } else {
-                        alert("Pouze Katka může mazat směny!");
+                        alert("Nesprávné heslo!");
                     }
                 }
             });
