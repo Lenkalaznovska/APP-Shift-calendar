@@ -11,16 +11,15 @@
     <style>
         body {
             font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 0;
             display: flex;
             flex-direction: column;
             align-items: center;
+            margin: 0;
+            padding: 0;
         }
         .container {
             display: flex;
             width: 100%;
-            flex-direction: row;
         }
         .sidebar {
             width: 300px;
@@ -64,16 +63,13 @@
             width: 100%;
         }
         @media (max-width: 768px) {
-            .container {
-                flex-direction: column;
-            }
             .sidebar {
-                order: 2;
-                width: 100%;
-                border-right: none;
-            }
-            #calendar {
-                order: 1;
+                display: none;
+                position: absolute;
+                top: 0;
+                left: 0;
+                height: 100vh;
+                z-index: 1000;
             }
             .menu-button {
                 display: block;
@@ -90,10 +86,21 @@
                 <h4>Kuchyně</h4>
                 <div class="draggable" data-name="Hanka">Hanka</div>
                 <div class="draggable" data-name="Marie">Marie</div>
+                <div class="draggable" data-name="Martina">Martina</div>
+                <div class="draggable" data-name="Martin">Martin</div>
+                <div class="draggable" data-name="Renata">Renata</div>
             </div>
             <div class="section couriers">
                 <h4>Kurýři</h4>
                 <div class="draggable" data-name="Jirka">Jirka</div>
+                <div class="draggable" data-name="Katka">Katka</div>
+                <div class="draggable" data-name="Michaela">Michaela</div>
+                <div class="draggable" data-name="Pavel">Pavel</div>
+            </div>
+            <div class="section bar">
+                <h4>Bar</h4>
+                <div class="draggable" data-name="Jiřina">Jiřina</div>
+                <div class="draggable" data-name="Katka">Katka</div>
             </div>
         </div>
         <div id="calendar"></div>
@@ -107,12 +114,12 @@
         document.addEventListener('DOMContentLoaded', function() {
             let calendarEl = document.getElementById('calendar');
             let calendar = new FullCalendar.Calendar(calendarEl, {
-                initialView: window.innerWidth < 768 ? 'timeGridWeek' : 'dayGridMonth',
+                initialView: 'dayGridMonth',
                 editable: true,
                 selectable: true,
                 droppable: true,
                 locale: 'cs',
-                events: JSON.parse(localStorage.getItem('savedEvents') || '[]'),
+                events: [],
                 dateClick: function(info) {
                     document.querySelectorAll('.draggable').forEach(el => {
                         el.onclick = function() {
@@ -145,10 +152,7 @@
                 }
             });
             
-            window.addEventListener('resize', function() {
-                calendar.changeView(window.innerWidth < 768 ? 'timeGridWeek' : 'dayGridMonth');
-            });
-            
+            loadEvents(calendar);
             calendar.render();
         });
         
@@ -159,6 +163,13 @@
                 backgroundColor: event.backgroundColor
             }));
             localStorage.setItem('savedEvents', JSON.stringify(events));
+        }
+        
+        function loadEvents(calendar) {
+            let savedEvents = JSON.parse(localStorage.getItem('savedEvents') || '[]');
+            savedEvents.forEach(eventData => {
+                calendar.addEvent(eventData);
+            });
         }
     </script>
 </body>
