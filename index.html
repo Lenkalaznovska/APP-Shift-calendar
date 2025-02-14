@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Profesionální plánovač směn</title>
+    <title>Plánovač směn</title>
     <link href="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@fullcalendar/interaction@5.11.3/main.global.min.js"></script>
@@ -11,44 +11,54 @@
     <style>
         body {
             font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 0;
             display: flex;
             flex-direction: column;
             align-items: center;
+            margin: 0;
+            padding: 0;
             background: #f4f4f4;
         }
         .container {
             display: flex;
-            width: 90%;
-            max-width: 1200px;
-            background: white;
-            border-radius: 10px;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-            overflow: hidden;
+            width: 100%;
         }
         .sidebar {
             width: 300px;
             padding: 20px;
-            background: #343a40;
-            color: white;
+            background: #ffffff;
+            border-right: 1px solid #ddd;
+            box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
         }
         .sidebar h3 {
             text-align: center;
-            margin-bottom: 20px;
+        }
+        .section {
+            margin-bottom: 15px;
+            padding: 10px;
+            border-radius: 5px;
+            background: #e9ecef;
         }
         .draggable {
             padding: 10px;
-            margin: 5px 0;
-            background: #007bff;
+            margin: 5px;
             color: white;
             cursor: pointer;
             border-radius: 5px;
             text-align: center;
+            font-weight: bold;
         }
+        .kitchen { background: #ffcc00; }
+        .couriers { background: #28a745; }
+        .bar { background: #dc3545; }
+        .kitchen .draggable { background: #ffcc00; }
+        .couriers .draggable { background: #28a745; }
+        .bar .draggable { background: #dc3545; }
         #calendar {
             flex-grow: 1;
             padding: 20px;
+            background: white;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
         }
     </style>
 </head>
@@ -56,9 +66,26 @@
     <div class="container">
         <div class="sidebar">
             <h3>Zaměstnanci</h3>
-            <div class="draggable" data-name="Hanka">Hanka</div>
-            <div class="draggable" data-name="Marie">Marie</div>
-            <div class="draggable" data-name="Martin">Martin</div>
+            <div class="section kitchen">
+                <h4>Kuchyně</h4>
+                <div class="draggable" data-name="Hanka">Hanka</div>
+                <div class="draggable" data-name="Marie">Marie</div>
+                <div class="draggable" data-name="Martina">Martina</div>
+                <div class="draggable" data-name="Martin">Martin</div>
+                <div class="draggable" data-name="Renata">Renata</div>
+            </div>
+            <div class="section couriers">
+                <h4>Kurýři</h4>
+                <div class="draggable" data-name="Jirka">Jirka</div>
+                <div class="draggable" data-name="Katka">Katka</div>
+                <div class="draggable" data-name="Michaela">Michaela</div>
+                <div class="draggable" data-name="Pavel">Pavel</div>
+            </div>
+            <div class="section bar">
+                <h4>Bar</h4>
+                <div class="draggable" data-name="Jiřina">Jiřina</div>
+                <div class="draggable" data-name="Katka">Katka</div>
+            </div>
         </div>
         <div id="calendar"></div>
     </div>
@@ -73,19 +100,55 @@
                 locale: 'cs',
                 events: [],
                 dateClick: function(info) {
-                    let employee = prompt("Zadejte jméno zaměstnance:");
-                    if (employee) {
-                        calendar.addEvent({
-                            title: employee,
-                            start: info.dateStr,
-                            backgroundColor: '#007bff',
-                            textColor: '#fff'
-                        });
+                    document.querySelectorAll('.draggable').forEach(el => {
+                        el.onclick = function() {
+                            let existingEvents = calendar.getEvents().filter(event => event.startStr === info.dateStr && event.title === el.dataset.name);
+                            if (existingEvents.length === 0) {
+                                calendar.addEvent({
+                                    title: el.dataset.name,
+                                    start: info.dateStr,
+                                    backgroundColor: el.style.backgroundColor,
+                                    textColor: '#fff',
+                                    display: 'block'
+                                });
+                                saveEvents(calendar);
+                            } else {
+                                alert("Tento zaměstnanec již má přiřazenou směnu na tento den!");
+                            }
+                        };
+                    });
+                },
+                eventClick: function(info) {
+                    let password = prompt("Zadejte heslo pro smazání směny:");
+                    if (password === "12345") {
+                        if (confirm("Opravdu chcete odstranit tuto směnu?")) {
+                            info.event.remove();
+                            saveEvents(calendar);
+                        }
+                    } else {
+                        alert("Nesprávné heslo!");
                     }
                 }
             });
+            loadEvents(calendar);
             calendar.render();
         });
+        
+        function saveEvents(calendar) {
+            let events = calendar.getEvents().map(event => ({
+                title: event.title,
+                start: event.start.toISOString(),
+                backgroundColor: event.backgroundColor
+            }));
+            localStorage.setItem('savedEvents', JSON.stringify(events));
+        }
+        
+        function loadEvents(calendar) {
+            let savedEvents = JSON.parse(localStorage.getItem('savedEvents') || '[]');
+            savedEvents.forEach(eventData => {
+                calendar.addEvent(eventData);
+            });
+        }
     </script>
 </body>
 </html>
