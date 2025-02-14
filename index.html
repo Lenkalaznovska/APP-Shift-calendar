@@ -11,21 +11,28 @@
     <style>
         body {
             font-family: Arial, sans-serif;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
             margin: 0;
             padding: 0;
         }
         .container {
             display: flex;
             flex-direction: column;
+            align-items: center;
             width: 100%;
         }
+        .layout {
+            display: flex;
+            width: 100%;
+            max-width: 1200px;
+        }
         .sidebar {
+            width: 300px;
             padding: 20px;
             background: #f8f9fa;
-            border-top: 1px solid #ddd;
+            border-right: 1px solid #ddd;
+        }
+        .sidebar h3 {
+            text-align: center;
         }
         .section {
             margin-bottom: 15px;
@@ -50,22 +57,45 @@
             flex-grow: 1;
             padding: 20px;
         }
-        @media (min-width: 769px) {
-            .container {
-                flex-direction: row;
+        .employees-mobile {
+            display: none;
+            width: 100%;
+            padding: 10px;
+            background: #f8f9fa;
+            border-top: 1px solid #ddd;
+        }
+        @media (max-width: 768px) {
+            .layout {
+                flex-direction: column;
             }
             .sidebar {
-                width: 300px;
-                border-top: none;
-                border-right: 1px solid #ddd;
+                display: none;
+            }
+            .employees-mobile {
+                display: block;
             }
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <div id="calendar"></div>
-        <div class="sidebar">
+        <div class="layout">
+            <div class="sidebar" id="sidebar">
+                <h3>Zaměstnanci</h3>
+                <div class="section kitchen">
+                    <h4>Kuchyně</h4>
+                    <div class="draggable" data-name="Hanka">Hanka</div>
+                    <div class="draggable" data-name="Marie">Marie</div>
+                </div>
+                <div class="section couriers">
+                    <h4>Kurýři</h4>
+                    <div class="draggable" data-name="Jirka">Jirka</div>
+                    <div class="draggable" data-name="Katka">Katka</div>
+                </div>
+            </div>
+            <div id="calendar"></div>
+        </div>
+        <div class="employees-mobile">
             <h3>Zaměstnanci</h3>
             <div class="section kitchen">
                 <h4>Kuchyně</h4>
@@ -89,20 +119,39 @@
                 droppable: true,
                 locale: 'cs',
                 events: [],
+                validRange: {
+                    start: new Date().toISOString().slice(0, 10),
+                    end: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().slice(0, 10)
+                },
                 dateClick: function(info) {
                     document.querySelectorAll('.draggable').forEach(el => {
                         el.onclick = function() {
-                            let color = window.getComputedStyle(el).backgroundColor;
-                            calendar.addEvent({
-                                title: el.dataset.name,
-                                start: info.dateStr,
-                                backgroundColor: color,
-                                textColor: '#fff'
-                            });
-                            saveEvents(calendar);
+                            let existingEvents = calendar.getEvents().filter(event => event.startStr === info.dateStr && event.title === el.dataset.name);
+                            if (existingEvents.length === 0) {
+                                calendar.addEvent({
+                                    title: el.dataset.name,
+                                    start: info.dateStr,
+                                    backgroundColor: el.style.backgroundColor,
+                                    textColor: '#fff'
+                                });
+                                saveEvents(calendar);
+                            } else {
+                                alert("Tento zaměstnanec již má přiřazenou směnu na tento den!");
+                            }
                         };
                     });
                 },
+                eventClick: function(info) {
+                    let password = prompt("Zadejte heslo pro smazání směny:");
+                    if (password === "12345") {
+                        if (confirm("Opravdu chcete odstranit tuto směnu?")) {
+                            info.event.remove();
+                            saveEvents(calendar);
+                        }
+                    } else {
+                        alert("Nesprávné heslo!");
+                    }
+                }
             });
             loadEvents(calendar);
             calendar.render();
