@@ -1,16 +1,82 @@
-// Přidání souboru index.html
-const fs = require("fs");
-fs.writeFileSync("index.html", `
 <!DOCTYPE html>
 <html lang="cs">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Plánování směn</title>
+    <title>Správa směn v restauraci</title>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; }
+        #calendar { display: flex; flex-wrap: wrap; justify-content: center; }
+        .day { width: 100px; height: 100px; border: 1px solid #ccc; margin: 5px; display: flex; align-items: center; justify-content: center; position: relative; }
+        .draggable { padding: 5px; background-color: lightgray; cursor: grab; margin: 2px; }
+        .section { margin-bottom: 20px; padding: 10px; border: 1px solid #000; display: inline-block; }
+        .kitchen { background-color: lightcoral; }
+        .couriers { background-color: lightblue; }
+        .bar { background-color: lightgreen; }
+    </style>
 </head>
 <body>
-    <div id="root"></div>
-    <script src="./index.js"></script>
+    <h1>Kalendář směn</h1>
+    <div id="calendar"></div>
+    <h2>Zaměstnanci</h2>
+    <div class="sections">
+        <div class="section kitchen">
+            <h4>Kuchyně</h4>
+            <div class="draggable" data-name="Hanka">Hanka</div>
+            <div class="draggable" data-name="Marie">Marie</div>
+            <div class="draggable" data-name="Martina">Martina</div>
+            <div class="draggable" data-name="Martin">Martin</div>
+            <div class="draggable" data-name="Renata">Renata</div>
+        </div>
+        <div class="section couriers">
+            <h4>Kurýři</h4>
+            <div class="draggable" data-name="Jirka">Jirka</div>
+            <div class="draggable" data-name="Katka">Katka</div>
+            <div class="draggable" data-name="Michaela">Michaela</div>
+            <div class="draggable" data-name="Pavel">Pavel</div>
+        </div>
+        <div class="section bar">
+            <h4>Bar</h4>
+            <div class="draggable" data-name="Jiřina">Jiřina</div>
+            <div class="draggable" data-name="Katka">Katka</div>
+        </div>
+    </div>
+    <button onclick="deleteShifts()">Smazat směny</button>
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            const calendar = document.getElementById("calendar");
+            for (let i = 1; i <= 30; i++) {
+                let day = document.createElement("div");
+                day.className = "day";
+                day.textContent = i;
+                day.ondrop = drop;
+                day.ondragover = allowDrop;
+                calendar.appendChild(day);
+            }
+            document.querySelectorAll(".draggable").forEach(item => {
+                item.draggable = true;
+                item.ondragstart = drag;
+            });
+        });
+        function allowDrop(event) { event.preventDefault(); }
+        function drag(event) { event.dataTransfer.setData("text", event.target.dataset.name); }
+        function drop(event) {
+            event.preventDefault();
+            let data = event.dataTransfer.getData("text");
+            let employee = document.createElement("div");
+            employee.textContent = data;
+            employee.className = "draggable";
+            event.target.appendChild(employee);
+        }
+        function deleteShifts() {
+            let pass = prompt("Zadejte heslo pro smazání směn:");
+            if (pass === "12345") {
+                document.querySelectorAll(".day").forEach(day => day.innerHTML = day.textContent);
+                alert("Směny byly smazány.");
+            } else {
+                alert("Nesprávné heslo!");
+            }
+        }
+    </script>
 </body>
 </html>
-`);
