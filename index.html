@@ -11,29 +11,27 @@
     <style>
         body {
             font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 0;
             display: flex;
             flex-direction: column;
             align-items: center;
+            margin: 0;
+            padding: 0;
         }
         .container {
             display: flex;
-            flex-direction: column;
             width: 100%;
         }
         .sidebar {
-            width: 100%;
+            width: 300px;
+            padding: 20px;
             background: #f8f9fa;
-            padding: 10px;
+            border-right: 1px solid #ddd;
         }
         .section {
+            margin-bottom: 15px;
             padding: 10px;
             border-radius: 5px;
         }
-        .kitchen { background: #ffcc00; }
-        .couriers { background: #28a745; }
-        .bar { background: #dc3545; }
         .draggable {
             padding: 10px;
             margin: 5px;
@@ -42,23 +40,13 @@
             border-radius: 5px;
             text-align: center;
         }
-        .kitchen .draggable { background: #ffcc00; }
-        .couriers .draggable { background: #28a745; }
-        .bar .draggable { background: #dc3545; }
         #calendar {
-            padding: 10px;
+            flex-grow: 1;
+            padding: 20px;
         }
-        .fc-day-other {
-            background: #e9ecef !important;
+        .past-day {
+            background-color: #ddd !important;
             pointer-events: none;
-        }
-        @media (min-width: 769px) {
-            .container {
-                flex-direction: row;
-            }
-            .sidebar {
-                width: 300px;
-            }
         }
     </style>
 </head>
@@ -70,16 +58,6 @@
                 <h4>Kuchyně</h4>
                 <div class="draggable" data-name="Hanka">Hanka</div>
                 <div class="draggable" data-name="Marie">Marie</div>
-                <div class="draggable" data-name="Martina">Martina</div>
-            </div>
-            <div class="section couriers">
-                <h4>Kurýři</h4>
-                <div class="draggable" data-name="Jirka">Jirka</div>
-                <div class="draggable" data-name="Katka">Katka</div>
-            </div>
-            <div class="section bar">
-                <h4>Bar</h4>
-                <div class="draggable" data-name="Jiřina">Jiřina</div>
             </div>
         </div>
         <div id="calendar"></div>
@@ -87,49 +65,48 @@
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             let calendarEl = document.getElementById('calendar');
+            let today = new Date().toISOString().split('T')[0];
             let calendar = new FullCalendar.Calendar(calendarEl, {
                 initialView: 'dayGridMonth',
                 editable: true,
                 selectable: true,
                 droppable: true,
                 locale: 'cs',
-                dayCellClassNames: function(arg) {
-                    if (!arg.isCurrentMonth) {
-                        return ['fc-day-other'];
-                    }
-                },
+                events: getSavedEvents(),
                 dateClick: function(info) {
-                    if (!info.date.getMonth() === calendar.getDate().getMonth()) return;
+                    if (info.dateStr < today) return;
                     document.querySelectorAll('.draggable').forEach(el => {
                         el.onclick = function() {
-                            let existingEvents = calendar.getEvents().filter(event => event.startStr === info.dateStr && event.title === el.dataset.name);
-                            if (existingEvents.length === 0) {
+                            let exists = calendar.getEvents().some(event => event.startStr === info.dateStr && event.title === el.dataset.name);
+                            if (!exists) {
                                 calendar.addEvent({
                                     title: el.dataset.name,
                                     start: info.dateStr,
-                                    backgroundColor: el.style.backgroundColor,
+                                    backgroundColor: '#007bff',
                                     textColor: '#fff'
                                 });
                                 saveEvents(calendar);
                             } else {
-                                alert("Tento zaměstnanec již má přiřazenou směnu na tento den!");
+                                alert("Tento zaměstnanec již má směnu!");
                             }
                         };
                     });
                 },
                 eventClick: function(info) {
                     let password = prompt("Zadejte heslo pro smazání směny:");
-                    if (password === "12345") {
-                        if (confirm("Opravdu chcete odstranit tuto směnu?")) {
-                            info.event.remove();
-                            saveEvents(calendar);
-                        }
+                    if (password === "12345" && confirm("Opravdu chcete odstranit tuto směnu?")) {
+                        info.event.remove();
+                        saveEvents(calendar);
                     } else {
                         alert("Nesprávné heslo!");
                     }
+                },
+                dayCellDidMount: function(info) {
+                    if (info.date.toISOString().split('T')[0] < today) {
+                        info.el.classList.add('past-day');
+                    }
                 }
             });
-            loadEvents(calendar);
             calendar.render();
         });
         function saveEvents(calendar) {
@@ -139,12 +116,10 @@
                 backgroundColor: event.backgroundColor
             }));
             localStorage.setItem('savedEvents', JSON.stringify(events));
+            sessionStorage.setItem('savedEvents', JSON.stringify(events));
         }
-        function loadEvents(calendar) {
-            let savedEvents = JSON.parse(localStorage.getItem('savedEvents') || '[]');
-            savedEvents.forEach(eventData => {
-                calendar.addEvent(eventData);
-            });
+        function getSavedEvents() {
+            return JSON.parse(localStorage.getItem('savedEvents') || sessionStorage.getItem('savedEvents') || '[]');
         }
     </script>
 </body>
