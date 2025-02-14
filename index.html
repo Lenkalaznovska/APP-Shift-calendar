@@ -12,14 +12,23 @@
         body {
             font-family: Arial, sans-serif;
             display: flex;
-            flex-direction: row;
-            align-items: flex-start;
+            flex-direction: column;
+            align-items: center;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            display: flex;
+            width: 100%;
         }
         .sidebar {
             width: 300px;
             padding: 20px;
             background: #f8f9fa;
             border-right: 1px solid #ddd;
+        }
+        .sidebar h3 {
+            text-align: center;
         }
         .section {
             margin-bottom: 15px;
@@ -44,36 +53,64 @@
             flex-grow: 1;
             padding: 20px;
         }
+        .menu-button {
+            display: none;
+            background: #007bff;
+            color: white;
+            padding: 10px;
+            border: none;
+            cursor: pointer;
+            width: 100%;
+        }
+        @media (max-width: 768px) {
+            .sidebar {
+                display: none;
+                position: absolute;
+                top: 0;
+                left: 0;
+                height: 100vh;
+                z-index: 1000;
+            }
+            .menu-button {
+                display: block;
+            }
+        }
     </style>
 </head>
 <body>
-    <div class="sidebar">
-        <h3>Zaměstnanci</h3>
-        <div class="section kitchen">
-            <h4>Kuchyně</h4>
-            <div class="draggable" data-name="Hanka">Hanka</div>
-            <div class="draggable" data-name="Marie">Marie</div>
-            <div class="draggable" data-name="Martina">Martina</div>
-            <div class="draggable" data-name="Martin">Martin</div>
-            <div class="draggable" data-name="Renata">Renata</div>
+    <button class="menu-button" onclick="toggleMenu()">Menu</button>
+    <div class="container">
+        <div class="sidebar" id="sidebar">
+            <h3>Zaměstnanci</h3>
+            <div class="section kitchen">
+                <h4>Kuchyně</h4>
+                <div class="draggable" data-name="Hanka">Hanka</div>
+                <div class="draggable" data-name="Marie">Marie</div>
+                <div class="draggable" data-name="Martina">Martina</div>
+                <div class="draggable" data-name="Martin">Martin</div>
+                <div class="draggable" data-name="Renata">Renata</div>
+            </div>
+            <div class="section couriers">
+                <h4>Kurýři</h4>
+                <div class="draggable" data-name="Jirka">Jirka</div>
+                <div class="draggable" data-name="Katka">Katka</div>
+                <div class="draggable" data-name="Michaela">Michaela</div>
+                <div class="draggable" data-name="Pavel">Pavel</div>
+            </div>
+            <div class="section bar">
+                <h4>Bar</h4>
+                <div class="draggable" data-name="Jiřina">Jiřina</div>
+                <div class="draggable" data-name="Katka">Katka</div>
+            </div>
         </div>
-        <div class="section couriers">
-            <h4>Kurýři</h4>
-            <div class="draggable" data-name="David">David</div>
-            <div class="draggable" data-name="Jirka">Jirka</div>
-            <div class="draggable" data-name="Katka">Katka</div>
-            <div class="draggable" data-name="Michaela">Michaela</div>
-            <div class="draggable" data-name="Pavel">Pavel</div>
-        </div>
-        <div class="section bar">
-            <h4>Bar</h4>
-            <div class="draggable" data-name="Jiřina">Jiřina</div>
-            <div class="draggable" data-name="Katka">Katka</div>
-        </div>
+        <div id="calendar"></div>
     </div>
-    <div id="calendar"></div>
-    
     <script>
+        function toggleMenu() {
+            let sidebar = document.getElementById("sidebar");
+            sidebar.style.display = sidebar.style.display === "block" ? "none" : "block";
+        }
+        
         document.addEventListener('DOMContentLoaded', function() {
             let calendarEl = document.getElementById('calendar');
             let calendar = new FullCalendar.Calendar(calendarEl, {
