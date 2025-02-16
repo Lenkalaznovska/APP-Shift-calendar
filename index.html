@@ -65,6 +65,12 @@
         background: #fff;
         min-height: 600px;
       }
+
+      /* Zvýraznění dnešního dne */
+      .fc-day-today {
+        background-color: #ffeb3b;
+        font-weight: bold;
+      }
     </style>
   </head>
   <body>
@@ -132,19 +138,19 @@
           buttonText: {
             today: "Dnes",
             month: "měsíc",
-            week: "týden",
-            day: "den",
           },
 
-          // Změna názvů měsíců tak, aby první písmeno bylo velké
-          monthNames: [
-            "Leden", "Únor", "Březen", "Duben", "Květen", "Červen",
-            "Červenec", "Srpen", "Září", "Říjen", "Listopad", "Prosinec"
-          ],
-          monthNamesShort: [
-            "Led", "Úno", "Bře", "Dub", "Kvě", "Čer",
-            "Čvc", "Srp", "Zář", "Říj", "Lis", "Pro"
-          ],
+          titleFormat: {
+            month: "long", // Full month name (January, February, etc.)
+            year: "numeric", // Year (e.g., 2025)
+          },
+
+          // Funkce pro velké písmeno u měsíce
+          headerToolbar: {
+            left: "prev,next today",
+            center: "title",
+            right: "dayGridMonth,dayGridWeek,dayGridDay",
+          },
 
           dateClick: function (info) {
             document.querySelectorAll(".draggable").forEach((el) => {
