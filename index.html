@@ -128,6 +128,24 @@
           locale: "cs",
           events: [],
 
+          // Nastavení pro lokalizaci názvů měsíců a dní
+          buttonText: {
+            today: "Dnes",
+            month: "měsíc",
+            week: "týden",
+            day: "den",
+          },
+
+          // Změna názvů měsíců tak, aby první písmeno bylo velké
+          monthNames: [
+            "Leden", "Únor", "Březen", "Duben", "Květen", "Červen",
+            "Červenec", "Srpen", "Září", "Říjen", "Listopad", "Prosinec"
+          ],
+          monthNamesShort: [
+            "Led", "Úno", "Bře", "Dub", "Kvě", "Čer",
+            "Čvc", "Srp", "Zář", "Říj", "Lis", "Pro"
+          ],
+
           dateClick: function (info) {
             document.querySelectorAll(".draggable").forEach((el) => {
               el.onclick = function () {
