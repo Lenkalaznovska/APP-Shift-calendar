@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Kalendář směn</title>
+    <title>Kalendář směn - Pizzerie San Marino</title>
     <link
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.css"
@@ -15,37 +15,7 @@
         margin: 20px;
         display: flex;
         flex-wrap: wrap;
-      }
-
-      #sidebar {
-        width: 200px;
-        padding: 10px;
-        border-right: 1px solid #ddd;
-      }
-
-      .section {
-        margin-bottom: 10px;
-        padding: 10px;
-        border-radius: 5px;
-      }
-
-      .kitchen {
-        background: #ffd700;
-      }
-      .couriers {
-        background: #1e90ff;
-      }
-      .bar {
-        background: #dc143c;
-      }
-
-      .draggable {
-        cursor: pointer;
-        padding: 5px;
-        margin: 5px 0;
-        border-radius: 5px;
-        color: white;
-        font-weight: bold;
+        overflow-x: hidden;
       }
 
       #calendar {
@@ -68,118 +38,88 @@
         border: 1px solid #ddd;
         box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
         z-index: 1000;
+        max-width: 90%;
+        max-height: 90%;
+        overflow-y: auto;
+      }
+
+      #assignedEmployees {
+        margin-top: 20px;
+      }
+
+      .assignedEmployee {
+        padding: 5px;
+        color: black;
+        font-weight: bold;
+        margin: 5px 0;
+        border-radius: 5px;
+        cursor: pointer;
+      }
+
+      #availableEmployees {
+        margin-top: 20px;
+      }
+
+      .assigned {
+        background-color: #28a745;
+      }
+
+      @media (max-width: 768px) {
+        #calendar {
+          margin: 10px;
+          padding: 5px;
+        }
+
+        #dayDetails {
+          width: 90%;
+        }
       }
     </style>
   </head>
   <body>
-    <div id="sidebar">
-      <h3>Zaměstnanci</h3>
-
-      <div class="section kitchen">
-        <h4>Kuchyně</h4>
-        <div class="draggable" data-name="Hanka" data-color="#FFC107">
-          Hanka
-        </div>
-        <div class="draggable" data-name="Marie" data-color="#FFC107">
-          Marie
-        </div>
-        <div class="draggable" data-name="Martina" data-color="#FFC107">
-          Martina
-        </div>
-        <div class="draggable" data-name="Martin" data-color="#FFC107">
-          Martin
-        </div>
-        <div class="draggable" data-name="Renata" data-color="#FFC107">
-          Renata
-        </div>
-      </div>
-
-      <div class="section couriers">
-        <h4>Kurýři</h4>
-        <div class="draggable" data-name="Jirka" data-color="#007BFF">
-          Jirka
-        </div>
-        <div class="draggable" data-name="Katka" data-color="#007BFF">
-          Katka
-        </div>
-        <div class="draggable" data-name="Michaela" data-color="#007BFF">
-          Michaela
-        </div>
-        <div class="draggable" data-name="Pavel" data-color="#007BFF">
-          Pavel
-        </div>
-      </div>
-
-      <div class="section bar">
-        <h4>Bar</h4>
-        <div class="draggable" data-name="Jiřina" data-color="#C82333">
-          Jiřina
-        </div>
-        <div class="draggable" data-name="Katka" data-color="#C82333">
-          Katka
-        </div>
-      </div>
-    </div>
-
     <div id="calendar"></div>
 
+    <div id="dayDetails">
+      <h3>Přiřazení zaměstnanců</h3>
+      <div id="availableEmployees"></div>
+      <button onclick="closeDayDetails()">Zavřít</button>
+    </div>
+
     <script>
+      let calendar;
+      let currentDate;
+      let availableEmployees = [];
+
       document.addEventListener("DOMContentLoaded", function () {
         let calendarEl = document.getElementById("calendar");
 
-        let calendar = new FullCalendar.Calendar(calendarEl, {
+        calendar = new FullCalendar.Calendar(calendarEl, {
           initialView: "dayGridMonth",
           editable: true,
           selectable: true,
           droppable: true,
           locale: "cs",
           events: [],
-
           buttonText: {
             today: "Dnes",
-            month: "měsíc",
+            month: "Měsíc",
+            week: "Týden",
+            day: "Den",
           },
-
           titleFormat: {
-            month: "long", // Full month name (January, February, etc.)
-            year: "numeric", // Year (e.g., 2025)
+            month: "long",
+            year: "numeric",
           },
-
           headerToolbar: {
-            left: "prev,next today",
+            left: "prev,next",
             center: "title",
             right: "dayGridMonth,dayGridWeek,dayGridDay",
           },
+          showNonCurrentDates: false,
 
           dateClick: function (info) {
-            document.querySelectorAll(".draggable").forEach((el) => {
-              el.onclick = function () {
-                let color = el.dataset.color || "#007bff";
-
-                if (
-                  !calendar
-                    .getEvents()
-                    .some(
-                      (event) =>
-                        event.startStr === info.dateStr &&
-                        event.title === el.dataset.name
-                    )
-                ) {
-                  calendar.addEvent({
-                    title: el.dataset.name,
-                    start: info.dateStr,
-                    backgroundColor: color,
-                    textColor: "#fff",
-                    display: "block",
-                  });
-                  saveEvents(calendar);
-                } else {
-                  alert(
-                    "Tento zaměstnanec již má přiřazenou směnu na tento den!"
-                  );
-                }
-              };
-            });
+            currentDate = info.dateStr;
+            showDayDetails(currentDate);
           },
 
           eventClick: function (info) {
@@ -218,6 +158,100 @@
           }
         );
       }
+
+      function showDayDetails(date) {
+        const availableEmployeesContainer =
+          document.getElementById("availableEmployees");
+
+        availableEmployeesContainer.innerHTML = "";
+
+        const employees = {
+          Kuchyně: [
+            { name: "Hanka", color: "#FFEB3B" },
+            { name: "Marie", color: "#FF7F80" },
+            { name: "Martina", color: "#4CAF50" },
+            { name: "Martin", color: "#1E00FF" },
+            { name: "Renata", color: "#808080" },
+          ],
+          Kurýři: [
+            { name: "Jirka", color: "#32CD32" },
+            { name: "Katka - Bar", color: "#FFA450" },
+            { name: "Michaela", color: "#00BFFF" },
+            { name: "Pavel", color: "#8A2BE2" },
+            { name: "Tomáš", color: "#FF4500" },
+          ],
+          Bar: [
+            { name: "Jiřina", color: "#DC143C" },
+            { name: "Katka - Kurýr", color: "#FF69B4" },
+          ],
+        };
+
+        for (const category in employees) {
+          const categoryDiv = document.createElement("div");
+          categoryDiv.innerHTML = `<h4>${category}</h4>`;
+          availableEmployeesContainer.appendChild(categoryDiv);
+
+          employees[category].forEach((employee) => {
+            const employeeDiv = document.createElement("div");
+            employeeDiv.className = "assignedEmployee";
+            employeeDiv.textContent = employee.name;
+            employeeDiv.style.backgroundColor = employee.color;
+            employeeDiv.onclick = function () {
+              assignEmployeeToDay(employee.name, employee.color, employeeDiv);
+            };
+            availableEmployees.push(employee);
+            categoryDiv.appendChild(employeeDiv);
+          });
+        }
+
+        document.getElementById("dayDetails").style.display = "block";
+
+        adjustDayDetailsHeight();
+      }
+
+      function closeDayDetails() {
+        document.getElementById("dayDetails").style.display = "none";
+      }
+
+      function assignEmployeeToDay(name, color, employeeDiv) {
+        if (
+          !calendar
+            .getEvents()
+            .some(
+              (event) =>
+                event.startStr.startsWith(currentDate) && event.title === name
+            )
+        ) {
+          calendar.addEvent({
+            title: name,
+            start: currentDate,
+            backgroundColor: color,
+            textColor: "#fff",
+          });
+          saveEvents(calendar);
+          closeDayDetails();
+
+          employeeDiv.remove();
+        } else {
+          alert("Tento zaměstnanec již má přiřazenou směnu na tento den!");
+        }
+      }
+
+      function adjustDayDetailsHeight() {
+        const dayDetails = document.getElementById("dayDetails");
+        const availableEmployeesContainer =
+          document.getElementById("availableEmployees");
+
+        const totalHeight = availableEmployeesContainer.scrollHeight + 100;
+
+        dayDetails.style.height = `${totalHeight}px`;
+      }
+
+      window.addEventListener("storage", function (e) {
+        if (e.key === "savedEvents") {
+          loadEvents(calendar);
+        }
+      });
     </script>
   </body>
 </html>
