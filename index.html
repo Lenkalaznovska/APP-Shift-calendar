@@ -14,28 +14,28 @@
         font-family: Arial, sans-serif;
         margin: 20px;
         display: flex;
-        flex-direction: column;
-        align-items: center;
+        flex-direction: row;
+        justify-content: space-between;
         overflow-x: hidden;
       }
 
       #calendar {
-        width: 100%;
-        max-width: 1200px;
-        margin: 20px;
+        flex: 1;
+        margin: 20px 0;
         padding: 10px;
         border: 1px solid #ddd;
         background: #fff;
         min-height: 600px;
       }
 
-50%, -50%);
+      #dayDetails {
+        width: 300px;
+        margin: 20px 0;
         background: white;
         padding: 20px;
         border: 1px solid #ddd;
         box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
         z-index: 1000;
-        max-width: 90%;
         max-height: 90%;
         overflow-y: auto;
       }
@@ -63,16 +63,19 @@
 
       @media (max-width: 768px) {
         body {
-          margin: 10px;
+          flex-direction: column;
+          align-items: center;
         }
 
         #calendar {
-          margin: 10px;
+          width: 90%;
+          margin: 10px 0;
           padding: 5px;
         }
 
         #dayDetails {
           width: 90%;
+          margin: 10px 0;
         }
       }
     </style>
@@ -83,7 +86,6 @@
     <div id="dayDetails">
       <h3>Přiřazení zaměstnanců</h3>
       <div id="availableEmployees"></div>
-      <button onclick="closeDayDetails()">Zavřít</button>
     </div>
 
     <script>
@@ -120,7 +122,6 @@
 
           dateClick: function (info) {
             currentDate = info.dateStr;
-            showDayDetails(currentDate);
           },
 
           eventClick: function (info) {
@@ -137,6 +138,7 @@
 
         loadEvents(calendar);
         calendar.render();
+        showAvailableEmployees();
       });
 
       function saveEvents(calendar) {
@@ -150,7 +152,7 @@
             }))
           )
         );
-        window.dispatchEvent(new Event('storage'));
+        window.dispatchEvent(new Event("storage"));
       }
 
       function loadEvents(calendar) {
@@ -161,7 +163,7 @@
         );
       }
 
-      function showDayDetails(date) {
+      function showAvailableEmployees() {
         const availableEmployeesContainer =
           document.getElementById("availableEmployees");
 
@@ -199,23 +201,15 @@
             employeeDiv.textContent = employee.name;
             employeeDiv.style.backgroundColor = employee.color;
             employeeDiv.onclick = function () {
-              assignEmployeeToDay(employee.name, employee.color, employeeDiv);
+              assignEmployeeToDay(employee.name, employee.color);
             };
             availableEmployees.push(employee);
             categoryDiv.appendChild(employeeDiv);
           });
         }
-
-        document.getElementById("dayDetails").style.display = "block";
-
-        adjustDayDetailsHeight();
       }
 
-      function closeDayDetails() {
-        document.getElementById("dayDetails").style.display = "none";
-      }
-
-      function assignEmployeeToDay(name, color, employeeDiv) {
+      function assignEmployeeToDay(name, color) {
         if (
           !calendar
             .getEvents()
@@ -231,22 +225,9 @@
             textColor: "#fff",
           });
           saveEvents(calendar);
-          closeDayDetails();
-
-          employeeDiv.remove();
         } else {
           alert("Tento zaměstnanec již má přiřazenou směnu na tento den!");
         }
-      }
-
-      function adjustDayDetailsHeight() {
-        const dayDetails = document.getElementById("dayDetails");
-        const availableEmployeesContainer =
-          document.getElementById("availableEmployees");
-
-        const totalHeight = availableEmployeesContainer.scrollHeight + 100;
-
-        dayDetails.style.height = `${totalHeight}px`;
       }
 
       window.addEventListener("storage", function (e) {
