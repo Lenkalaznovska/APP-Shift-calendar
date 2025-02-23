@@ -132,6 +132,8 @@
 
           dateClick: function (info) {
             currentDate = info.dateStr;
+            calendar.changeView("dayGridDay", info.date);
+            showAvailableEmployees();
           },
 
           eventClick: function (info) {
