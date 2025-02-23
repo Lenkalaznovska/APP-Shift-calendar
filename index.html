@@ -164,6 +164,12 @@
               updateDayHeader(view.currentStart);
             }
           },
+
+          datesSet: function (info) {
+            if (calendar.view.type === "dayGridDay") {
+              updateDayHeader(calendar.view.currentStart);
+            }
+          },
         });
 
         loadEvents(calendar);
@@ -270,8 +276,7 @@
           ".fc-col-header-cell-cushion"
         );
         dayHeaders.forEach((header) => {
-          const dayName = header.textContent.split(" ")[0];
-          header.textContent = `${dayName} ${formattedDate}`;
+          header.textContent = formattedDate;
         });
       }
 
