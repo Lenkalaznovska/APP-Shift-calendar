@@ -160,6 +160,14 @@
             }
           },
 
+          eventDidMount: function (info) {
+            if (info.event.extendedProps.note) {
+              const noteEl = document.createElement("div");
+              noteEl.innerHTML = `<strong>Poznámka:</strong> ${info.event.extendedProps.note}`;
+              info.el.querySelector(".fc-event-title").appendChild(noteEl);
+            }
+          },
+
           viewDidMount: function (view) {
             if (view.type === "dayGridDay") {
               updateDayHeader(view.currentStart);
@@ -186,6 +194,7 @@
               title: event.title,
               start: event.start.toISOString(),
               backgroundColor: event.backgroundColor,
+              note: event.extendedProps.note,
             }))
           )
         );
@@ -238,7 +247,8 @@
             employeeDiv.textContent = employee.name;
             employeeDiv.style.backgroundColor = employee.color;
             employeeDiv.onclick = function () {
-              assignEmployeeToDay(employee.name, employee.color);
+              const note = prompt("Zadejte poznámku pro tuto směnu:");
+              assignEmployeeToDay(employee.name, employee.color, note);
             };
             availableEmployees.push(employee);
             categoryDiv.appendChild(employeeDiv);
@@ -246,7 +256,7 @@
         }
       }
 
-      function assignEmployeeToDay(name, color) {
+      function assignEmployeeToDay(name, color, note) {
         if (
           !calendar
             .getEvents()
@@ -260,6 +270,9 @@
             start: currentDate,
             backgroundColor: color,
             textColor: "#fff",
+            extendedProps: {
+              note: note,
+            },
           });
           saveEvents(calendar);
         } else {
