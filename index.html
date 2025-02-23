@@ -61,6 +61,10 @@
         background-color: #28a745;
       }
 
+      .fc-day-today {
+        background-color: peachpuff !important;
+      }
+
       @media (max-width: 768px) {
         body {
           flex-direction: column;
@@ -117,16 +121,15 @@
             today: "Dnes",
             month: "Měsíc",
             week: "Týden",
-            day: "Den",
           },
           titleFormat: {
             month: "long",
             year: "numeric",
           },
           headerToolbar: {
-            left: "prev,next",
+            left: "prev,next today",
             center: "title",
-            right: "dayGridMonth,dayGridDay",
+            right: "dayGridMonth",
           },
           showNonCurrentDates: false,
 
@@ -134,16 +137,31 @@
             currentDate = info.dateStr;
             calendar.changeView("dayGridDay", info.date);
             showAvailableEmployees();
+            updateDayHeader(info.date);
           },
 
           eventClick: function (info) {
-            if (prompt("Zadejte heslo pro smazání směny:") === "12345") {
-              if (confirm("Opravdu chcete odstranit tuto směnu?")) {
-                info.event.remove();
-                saveEvents(calendar);
+            if (info.event.extendedProps.clickedOnce) {
+              if (prompt("Zadejte heslo pro smazání směny:") === "12345") {
+                if (confirm("Opravdu chcete odstranit tuto směnu?")) {
+                  info.event.remove();
+                  saveEvents(calendar);
+                }
+              } else {
+                alert("Nesprávné heslo!");
               }
             } else {
-              alert("Nesprávné heslo!");
+              info.event.setExtendedProp("clickedOnce", true);
+              setTimeout(
+                () => info.event.setExtendedProp("clickedOnce", false),
+                300
+              );
+            }
+          },
+
+          viewDidMount: function (view) {
+            if (view.type === "dayGridDay") {
+              updateDayHeader(view.currentStart);
             }
           },
         });
@@ -240,6 +258,21 @@
         } else {
           alert("Tento zaměstnanec již má přiřazenou směnu na tento den!");
         }
+      }
+
+      function updateDayHeader(date) {
+        const formattedDate = new Date(date).toLocaleDateString("cs-CZ", {
+          day: "2-digit",
+          month: "2-digit",
+          year: "numeric",
+        });
+        const dayHeaders = document.querySelectorAll(
+          ".fc-col-header-cell-cushion"
+        );
+        dayHeaders.forEach((header) => {
+          const dayName = header.textContent.split(" ")[0];
+          header.textContent = `${dayName} ${formattedDate}`;
+        });
       }
 
       window.addEventListener("storage", function (e) {
