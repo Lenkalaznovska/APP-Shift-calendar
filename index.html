@@ -9,240 +9,239 @@ if ($conn->connect_error) {
     die("Připojení selhalo: " . $conn->connect_error);
 }
 
-// API logika podle požadavku
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // přidání nové směny
-    if (isset($_POST['action']) && $_POST['action'] === 'add') {
-        $name = $_POST['name'] ?? '';
-        $shift_date = $_POST['shift_date'] ?? '';
-        $note = $_POST['note'] ?? '';
-        $color = $_POST['color'] ?? '#000000';
+    $name = $_POST['name'] ?? '';
+    $shift_date = $_POST['shift_date'] ?? '';
+    $note = $_POST['note'] ?? '';
+    $color = $_POST['color'] ?? '#000000';
 
-        if ($name && $shift_date) {
-            $stmt = $conn->prepare("INSERT INTO shifts (name, shift_date, note, color, created_at) VALUES (?, ?, ?, ?, NOW())");
-            $stmt->bind_param("ssss", $name, $shift_date, $note, $color);
-            $stmt->execute();
-            $stmt->close();
-            echo "OK";
-        } else {
-            echo "Chybí data";
-        }
-        $conn->close();
-        exit;
-    }
-
-    // mazání směny
-    if (isset($_POST['action']) && $_POST['action'] === 'delete') {
-        $name = $_POST['name'] ?? '';
-        $shift_date = $_POST['shift_date'] ?? '';
-
-        if ($name && $shift_date) {
-            $stmt = $conn->prepare("DELETE FROM shifts WHERE name = ? AND shift_date = ?");
-            $stmt->bind_param("ss", $name, $shift_date);
-            $stmt->execute();
-            echo "Smazáno";
-            $stmt->close();
-        } else {
-            echo "Neplatná data";
-        }
-        $conn->close();
-        exit;
-    }
-}
-
-// AJAX načítání směn
-if (isset($_GET['load_shifts'])) {
-    $shifts = [];
-    $result = $conn->query("SELECT * FROM shifts");
-    while ($row = $result->fetch_assoc()) {
-        $shifts[] = [
-            'title' => $row['name'],
-            'start' => $row['shift_date'],
-            'backgroundColor' => $row['color'] ?: '#000',
-            'textColor' => '#fff',
-            'extendedProps' => ['note' => $row['note']]
-        ];
+    if ($name && $shift_date) {
+        $stmt = $conn->prepare("INSERT INTO shifts (name, shift_date, note, color) VALUES (?, ?, ?, ?)");
+        $stmt->bind_param("ssss", $name, $shift_date, $note, $color);
+        $stmt->execute();
+        $stmt->close();
+        echo "OK";
+    } else {
+        echo "Chybí data";
     }
     $conn->close();
-    header('Content-Type: application/json');
-    echo json_encode($shifts);
-    exit;
+    exit; // konec pro POST požadavek
 }
+
+// Načítání směn (GET požadavek)
+$shifts = [];
+$result = $conn->query("SELECT * FROM shifts");
+while ($row = $result->fetch_assoc()) {
+    $shifts[] = $row;
+}
+$conn->close();
 ?>
 <!DOCTYPE html>
 <html lang="cs">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Směny - Pizzerie San Marino</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.css" />
-  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.js"></script>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      margin: 20px;
-      display: flex;
-      flex-direction: row;
-      justify-content: space-between;
-    }
-    #calendar {
-      flex: 1;
-      margin: 20px 0;
-      padding: 10px;
-      border: 1px solid #ddd;
-      background: #fff;
-      min-height: 600px;
-    }
-    #dayDetails {
-      width: 300px;
-      margin: 20px 0;
-      background: white;
-      padding: 20px;
-      border: 1px solid #ddd;
-      box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
-      max-height: 90%;
-      overflow-y: auto;
-    }
-    .assignedEmployee {
-      padding: 5px;
-      color: black;
-      font-weight: bold;
-      margin: 5px 0;
-      border-radius: 5px;
-      cursor: pointer;
-    }
-    .fc-day-today {
-      background-color: peachpuff !important;
-    }
-    @media (max-width: 768px) {
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Směny - Pizzerie San Marino</title>
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.css"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.js"></script>
+    <style>
       body {
-        flex-direction: column;
-        align-items: center;
+        font-family: Arial, sans-serif;
+        margin: 20px;
+        display: flex;
+        flex-direction: row;
+        justify-content: space-between;
+        overflow-x: hidden;
       }
-      #calendar, #dayDetails {
-        width: 90%;
-        margin: 10px 0;
+
+      #calendar {
+        flex: 1;
+        margin: 20px 0;
+        padding: 10px;
+        border: 1px solid #ddd;
+        background: #fff;
+        min-height: 600px;
       }
-    }
-  </style>
-</head>
-<body>
-  <div id="calendar"></div>
-  <div id="dayDetails">
-    <h3>Přiřazení zaměstnanců</h3>
-    <div id="availableEmployees"></div>
-  </div>
 
-  <script>
-    let calendar;
-    let currentDate;
+      #dayDetails {
+        width: 300px;
+        margin: 20px 0;
+        background: white;
+        padding: 20px;
+        border: 1px solid #ddd;
+        box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
+        max-height: 90%;
+        overflow-y: auto;
+      }
 
-    document.addEventListener("DOMContentLoaded", function () {
-      calendar = new FullCalendar.Calendar(document.getElementById("calendar"), {
-        initialView: "dayGridMonth",
-        editable: true,
-        selectable: true,
-        locale: "cs",
-        events: "<?= $_SERVER['PHP_SELF'] ?>?load_shifts=1",
-        headerToolbar: {
-          left: "prev,next",
-          center: "title",
-          right: "today dayGridMonth"
-        },
-        dateClick: function (info) {
-          currentDate = info.dateStr;
-          showAvailableEmployees();
-        },
-        eventClick: function (info) {
-          if (info.event.extendedProps.clickedOnce) {
-            if (prompt("Zadejte heslo pro smazání směny:") === "12345") {
-              if (confirm("Opravdu chcete odstranit tuto směnu?")) {
-                fetch("<?= $_SERVER['PHP_SELF'] ?>", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/x-www-form-urlencoded" },
-                  body: new URLSearchParams({
-                    action: "delete",
-                    name: info.event.title,
-                    shift_date: info.event.startStr
-                  })
-                }).then(() => {
+      .assignedEmployee {
+        padding: 5px;
+        color: black;
+        font-weight: bold;
+        margin: 5px 0;
+        border-radius: 5px;
+        cursor: pointer;
+      }
+
+      .fc-day-today {
+        background-color: peachpuff !important;
+      }
+
+      @media (max-width: 768px) {
+        body {
+          flex-direction: column;
+          align-items: center;
+        }
+
+        #calendar {
+          width: 100%;
+          margin: 10px 0;
+          padding: 5px;
+        }
+
+        #dayDetails {
+          width: 90%;
+          margin: 10px 0;
+        }
+
+        .fc-header-toolbar {
+          flex-wrap: wrap;
+        }
+
+        .fc-toolbar-chunk {
+          width: 100%;
+          text-align: center;
+          margin-bottom: 5px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="calendar"></div>
+    <div id="dayDetails">
+      <h3>Přiřazení zaměstnanců</h3>
+      <div id="availableEmployees"></div>
+    </div>
+
+    <script>
+      let calendar;
+      let currentDate;
+
+      document.addEventListener("DOMContentLoaded", function () {
+        calendar = new FullCalendar.Calendar(document.getElementById("calendar"), {
+          initialView: "dayGridMonth",
+          editable: true,
+          selectable: true,
+          locale: "cs",
+          events: <?php echo json_encode(array_map(function($e) {
+              return [
+                'title' => $e['name'],
+                'start' => $e['shift_date'],
+                'backgroundColor' => $e['color'] ?: '#000',
+                'textColor' => '#fff',
+                'extendedProps' => ['note' => $e['note']]
+              ];
+          }, $shifts)); ?>,
+          headerToolbar: {
+            left: "prev,next",
+            center: "title",
+            right: "today dayGridMonth"
+          },
+          dateClick: function (info) {
+            currentDate = info.dateStr;
+            showAvailableEmployees();
+          },
+          eventClick: function (info) {
+            if (info.event.extendedProps.clickedOnce) {
+              if (prompt("Zadejte heslo pro smazání směny:") === "12345") {
+                if (confirm("Opravdu chcete odstranit tuto směnu?")) {
                   info.event.remove();
-                });
+                }
+              } else {
+                alert("Nesprávné heslo!");
               }
             } else {
-              alert("Nesprávné heslo!");
+              info.event.setExtendedProp("clickedOnce", true);
+              setTimeout(() => info.event.setExtendedProp("clickedOnce", false), 300);
             }
-          } else {
-            info.event.setExtendedProp("clickedOnce", true);
-            setTimeout(() => info.event.setExtendedProp("clickedOnce", false), 300);
           }
-        }
+        });
+
+        calendar.render();
+        showAvailableEmployees();
       });
 
-      calendar.render();
-      showAvailableEmployees();
+      function showAvailableEmployees() {
+        const container = document.getElementById("availableEmployees");
+        container.innerHTML = "";
+        const employees = {
+          Kuchyně: [
+            { name: "Hanka", color: "#FFEB3B" },
+            { name: "Marie", color: "#FF7F80" },
+            { name: "Martina", color: "#4CAF50" },
+            { name: "Martin", color: "#1E00FF" },
+            { name: "Renata", color: "#808080" }
+          ],
+          Kurýři: [
+            { name: "Jirka", color: "#32CD32" },
+            { name: "Katka - Kurýr", color: "#FF69B4" },
+            { name: "Michaela", color: "#00BFFF" },
+            { name: "Pavel", color: "#8A2BE2" },
+            { name: "Tomáš", color: "#FF4500" },
+            { name: "Kristián", color: "#1f7a39" }
+          ],
+          Bar: [
+            { name: "Jiřina", color: "#DC143C" },
+            { name: "Katka - Bar", color: "#FFA450" }
+          ]
+        };
+        for (const group in employees) {
+          const groupDiv = document.createElement("div");
+          groupDiv.innerHTML = `<h4>${group}</h4>`;
+          container.appendChild(groupDiv);
+          employees[group].forEach(emp => {
+            const div = document.createElement("div");
+            div.className = "assignedEmployee";
+            div.textContent = emp.name;
+            div.style.backgroundColor = emp.color;
+            div.onclick = () => assignEmployeeToDay(emp.name, emp.color);
+            groupDiv.appendChild(div);
+          });
+        }
+      }
+
+      function assignEmployeeToDay(name, color) {
+  const note = prompt("Zadejte poznámku ke směně:");
+  if (!calendar.getEvents().some(e => e.startStr === currentDate && e.title === name)) {
+    calendar.addEvent({
+      title: name,
+      start: currentDate,  // ZDE musí být aktuálně vybraný den, ne pevné datum!
+      backgroundColor: color,
+      textColor: "#fff",
+      extendedProps: { note }
     });
 
-    function showAvailableEmployees() {
-      const container = document.getElementById("availableEmployees");
-      container.innerHTML = "";
-      const employees = {
-        Kuchyně: [
-          { name: "Hanka", color: "#FFEB3B" },
-          { name: "Marie", color: "#FF7F80" },
-          { name: "Martina", color: "#4CAF50" },
-          { name: "Martin", color: "#1E00FF" },
-          { name: "Renata", color: "#808080" }
-        ],
-        Kurýři: [
-          { name: "Jirka", color: "#32CD32" },
-          { name: "Katka - Kurýr", color: "#FF69B4" },
-          { name: "Michaela", color: "#00BFFF" },
-          { name: "Pavel", color: "#8A2BE2" },
-          { name: "Tomáš", color: "#FF4500" },
-          { name: "Kristián", color: "#1f7a39" }
-        ],
-        Bar: [
-          { name: "Jiřina", color: "#DC143C" },
-          { name: "Katka - Bar", color: "#FFA450" }
-        ]
-      };
-
-      for (const group in employees) {
-        const groupDiv = document.createElement("div");
-        groupDiv.innerHTML = `<h4>${group}</h4>`;
-        container.appendChild(groupDiv);
-        employees[group].forEach(emp => {
-          const div = document.createElement("div");
-          div.className = "assignedEmployee";
-          div.textContent = emp.name;
-          div.style.backgroundColor = emp.color;
-          div.onclick = () => assignEmployeeToDay(emp.name, emp.color);
-          groupDiv.appendChild(div);
-        });
-      }
-    }
-
-    function assignEmployeeToDay(name, color) {
-      const note = prompt("Zadejte poznámku ke směně:");
-      if (!calendar.getEvents().some(e => e.startStr === currentDate && e.title === name)) {
-        fetch("<?= $_SERVER['PHP_SELF'] ?>", {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: new URLSearchParams({
-            action: "add",
-            name: name,
-            shift_date: currentDate,
-            note: note,
-            color: color
-          })
-        }).then(() => {
-          calendar.refetchEvents(); // načti znovu z DB
-        });
-      } else {
-        alert("Tento zaměstnanec už má směnu na tento den.");
-      }
-    }
-  </script>
-</body>
+    // Uložení do DB
+    fetch(window.location.href, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        name: name,
+        shift_date: currentDate,  // opět použijeme správné datum
+        note: note,
+        color: color
+      })
+    })
+    .then(res => res.text())
+    .then(data => console.log("Server:", data))
+    .catch(err => console.error("Chyba:", err));
+  } else {
+    alert("Tento zaměstnanec už má směnu na tento den.");
+  }
+}
+    </script>
+  </body>
 </html>
