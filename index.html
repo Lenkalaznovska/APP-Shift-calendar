@@ -184,6 +184,19 @@
         loadEvents(calendar);
         calendar.render();
         showAvailableEmployees();
+
+        // Použití MutationObserver místo DOMNodeInsertedIntoDocument
+        const targetNode = document.getElementById("calendar");
+        const config = { childList: true, subtree: true };
+        const callback = function (mutationsList, observer) {
+          for (let mutation of mutationsList) {
+            if (mutation.type === "childList") {
+              console.log("Byl přidán nebo odstraněn uzel.");
+            }
+          }
+        };
+        const observer = new MutationObserver(callback);
+        observer.observe(targetNode, config);
       });
 
       function saveEvents(calendar) {
@@ -225,14 +238,15 @@
           ],
           Kurýři: [
             { name: "Jirka", color: "#32CD32" },
-            { name: "Katka - Bar", color: "#FFA450" },
+            { name: "Katka - Kurýr", color: "#FF69B4" },
             { name: "Michaela", color: "#00BFFF" },
             { name: "Pavel", color: "#8A2BE2" },
             { name: "Tomáš", color: "#FF4500" },
+            { name: "Kristián", color: "#1f7a39" },
           ],
           Bar: [
             { name: "Jiřina", color: "#DC143C" },
-            { name: "Katka - Kurýr", color: "#FF69B4" },
+            { name: "Katka - Bar", color: "#FFA450" },
           ],
         };
 
@@ -275,6 +289,26 @@
             },
           });
           saveEvents(calendar);
+
+          // Uložení směny do databáze
+          fetch("conn.php", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/x-www-form-urlencoded",
+            },
+            body: new URLSearchParams({
+              name: name,
+              shift_date: currentDate,
+              note: note,
+            }),
+          })
+            .then((response) => response.text())
+            .then((data) => {
+              console.log(data);
+            })
+            .catch((error) => {
+              console.error("Chyba:", error);
+            });
         } else {
           alert("Tento zaměstnanec již má přiřazenou směnu na tento den!");
         }
