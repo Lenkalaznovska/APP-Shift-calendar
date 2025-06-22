@@ -1,3 +1,41 @@
+<?php
+$host = "localhost";
+$dbname = "pizzeria_smeny";
+$username = "root";
+$password = "";
+
+$conn = new mysqli($host, $username, $password, $dbname);
+if ($conn->connect_error) {
+    die("Připojení selhalo: " . $conn->connect_error);
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $name = $_POST['name'] ?? '';
+    $shift_date = $_POST['shift_date'] ?? '';
+    $note = $_POST['note'] ?? '';
+    $color = $_POST['color'] ?? '#000000';
+
+    if ($name && $shift_date) {
+        $stmt = $conn->prepare("INSERT INTO shifts (name, shift_date, note, color) VALUES (?, ?, ?, ?)");
+        $stmt->bind_param("ssss", $name, $shift_date, $note, $color);
+        $stmt->execute();
+        $stmt->close();
+        echo "OK";
+    } else {
+        echo "Chybí data";
+    }
+    $conn->close();
+    exit; // konec pro POST požadavek
+}
+
+// Načítání směn (GET požadavek)
+$shifts = [];
+$result = $conn->query("SELECT * FROM shifts");
+while ($row = $result->fetch_assoc()) {
+    $shifts[] = $row;
+}
+$conn->close();
+?>
 <!DOCTYPE html>
 <html lang="cs">
   <head>
@@ -35,13 +73,8 @@
         padding: 20px;
         border: 1px solid #ddd;
         box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
-        z-index: 1000;
         max-height: 90%;
         overflow-y: auto;
-      }
-
-      #assignedEmployees {
-        margin-top: 20px;
       }
 
       .assignedEmployee {
@@ -51,14 +84,6 @@
         margin: 5px 0;
         border-radius: 5px;
         cursor: pointer;
-      }
-
-      #availableEmployees {
-        margin-top: 20px;
-      }
-
-      .assigned {
-        background-color: #28a745;
       }
 
       .fc-day-today {
@@ -72,7 +97,7 @@
         }
 
         #calendar {
-          width: 100%; /* Změna na 100% šířku */
+          width: 100%;
           margin: 10px 0;
           padding: 5px;
         }
@@ -96,7 +121,6 @@
   </head>
   <body>
     <div id="calendar"></div>
-
     <div id="dayDetails">
       <h3>Přiřazení zaměstnanců</h3>
       <div id="availableEmployees"></div>
@@ -105,136 +129,61 @@
     <script>
       let calendar;
       let currentDate;
-      let availableEmployees = [];
 
       document.addEventListener("DOMContentLoaded", function () {
-        let calendarEl = document.getElementById("calendar");
-
-        calendar = new FullCalendar.Calendar(calendarEl, {
+        calendar = new FullCalendar.Calendar(document.getElementById("calendar"), {
           initialView: "dayGridMonth",
           editable: true,
           selectable: true,
-          droppable: true,
           locale: "cs",
-          events: [],
-          buttonText: {
-            today: "Dnes",
-            month: "Měsíc",
-            week: "Týden",
-          },
-          titleFormat: {
-            month: "long",
-            year: "numeric",
-          },
+          events: <?php echo json_encode(array_map(function($e) {
+              return [
+                'title' => $e['name'],
+                'start' => $e['shift_date'],
+                'backgroundColor' => $e['color'] ?: '#000',
+                'textColor' => '#fff',
+                'extendedProps' => ['note' => $e['note']]
+              ];
+          }, $shifts)); ?>,
           headerToolbar: {
             left: "prev,next",
             center: "title",
-            right: "today dayGridMonth",
+            right: "today dayGridMonth"
           },
-          showNonCurrentDates: false,
-          firstDay: 1, // Nastavení prvního dne na pondělí
-
           dateClick: function (info) {
             currentDate = info.dateStr;
-            calendar.changeView("dayGridDay", info.date);
             showAvailableEmployees();
-            updateDayHeader(info.date);
           },
-
           eventClick: function (info) {
             if (info.event.extendedProps.clickedOnce) {
               if (prompt("Zadejte heslo pro smazání směny:") === "12345") {
                 if (confirm("Opravdu chcete odstranit tuto směnu?")) {
                   info.event.remove();
-                  saveEvents(calendar);
                 }
               } else {
                 alert("Nesprávné heslo!");
               }
             } else {
               info.event.setExtendedProp("clickedOnce", true);
-              setTimeout(
-                () => info.event.setExtendedProp("clickedOnce", false),
-                300
-              );
+              setTimeout(() => info.event.setExtendedProp("clickedOnce", false), 300);
             }
-          },
-
-          eventDidMount: function (info) {
-            if (info.event.extendedProps.note) {
-              const noteEl = document.createElement("div");
-              noteEl.innerHTML = `<strong>Poznámka:</strong> ${info.event.extendedProps.note}`;
-              info.el.querySelector(".fc-event-title").appendChild(noteEl);
-            }
-          },
-
-          viewDidMount: function (view) {
-            if (view.type === "dayGridDay") {
-              updateDayHeader(view.currentStart);
-            }
-          },
-
-          datesSet: function (info) {
-            if (calendar.view.type === "dayGridDay") {
-              updateDayHeader(calendar.view.currentStart);
-            }
-          },
+          }
         });
 
-        loadEvents(calendar);
         calendar.render();
         showAvailableEmployees();
-
-        // Použití MutationObserver místo DOMNodeInsertedIntoDocument
-        const targetNode = document.getElementById("calendar");
-        const config = { childList: true, subtree: true };
-        const callback = function (mutationsList, observer) {
-          for (let mutation of mutationsList) {
-            if (mutation.type === "childList") {
-              console.log("Byl přidán nebo odstraněn uzel.");
-            }
-          }
-        };
-        const observer = new MutationObserver(callback);
-        observer.observe(targetNode, config);
       });
 
-      function saveEvents(calendar) {
-        localStorage.setItem(
-          "savedEvents",
-          JSON.stringify(
-            calendar.getEvents().map((event) => ({
-              title: event.title,
-              start: event.start.toISOString(),
-              backgroundColor: event.backgroundColor,
-              note: event.extendedProps.note,
-            }))
-          )
-        );
-        window.dispatchEvent(new Event("storage"));
-      }
-
-      function loadEvents(calendar) {
-        JSON.parse(localStorage.getItem("savedEvents") || "[]").forEach(
-          (eventData) => {
-            calendar.addEvent(eventData);
-          }
-        );
-      }
-
       function showAvailableEmployees() {
-        const availableEmployeesContainer =
-          document.getElementById("availableEmployees");
-
-        availableEmployeesContainer.innerHTML = "";
-
+        const container = document.getElementById("availableEmployees");
+        container.innerHTML = "";
         const employees = {
           Kuchyně: [
             { name: "Hanka", color: "#FFEB3B" },
             { name: "Marie", color: "#FF7F80" },
             { name: "Martina", color: "#4CAF50" },
             { name: "Martin", color: "#1E00FF" },
-            { name: "Renata", color: "#808080" },
+            { name: "Renata", color: "#808080" }
           ],
           Kurýři: [
             { name: "Jirka", color: "#32CD32" },
@@ -242,97 +191,57 @@
             { name: "Michaela", color: "#00BFFF" },
             { name: "Pavel", color: "#8A2BE2" },
             { name: "Tomáš", color: "#FF4500" },
-            { name: "Kristián", color: "#1f7a39" },
+            { name: "Kristián", color: "#1f7a39" }
           ],
           Bar: [
             { name: "Jiřina", color: "#DC143C" },
-            { name: "Katka - Bar", color: "#FFA450" },
-          ],
+            { name: "Katka - Bar", color: "#FFA450" }
+          ]
         };
-
-        for (const category in employees) {
-          const categoryDiv = document.createElement("div");
-          categoryDiv.innerHTML = `<h4>${category}</h4>`;
-          availableEmployeesContainer.appendChild(categoryDiv);
-
-          employees[category].forEach((employee) => {
-            const employeeDiv = document.createElement("div");
-            employeeDiv.className = "assignedEmployee";
-            employeeDiv.textContent = employee.name;
-            employeeDiv.style.backgroundColor = employee.color;
-            employeeDiv.onclick = function () {
-              const note = prompt("Zadejte poznámku pro tuto směnu:");
-              assignEmployeeToDay(employee.name, employee.color, note);
-            };
-            availableEmployees.push(employee);
-            categoryDiv.appendChild(employeeDiv);
+        for (const group in employees) {
+          const groupDiv = document.createElement("div");
+          groupDiv.innerHTML = `<h4>${group}</h4>`;
+          container.appendChild(groupDiv);
+          employees[group].forEach(emp => {
+            const div = document.createElement("div");
+            div.className = "assignedEmployee";
+            div.textContent = emp.name;
+            div.style.backgroundColor = emp.color;
+            div.onclick = () => assignEmployeeToDay(emp.name, emp.color);
+            groupDiv.appendChild(div);
           });
         }
       }
 
-      function assignEmployeeToDay(name, color, note) {
-        if (
-          !calendar
-            .getEvents()
-            .some(
-              (event) =>
-                event.startStr.startsWith(currentDate) && event.title === name
-            )
-        ) {
-          calendar.addEvent({
-            title: name,
-            start: currentDate,
-            backgroundColor: color,
-            textColor: "#fff",
-            extendedProps: {
-              note: note,
-            },
-          });
-          saveEvents(calendar);
+      function assignEmployeeToDay(name, color) {
+  const note = prompt("Zadejte poznámku ke směně:");
+  if (!calendar.getEvents().some(e => e.startStr === currentDate && e.title === name)) {
+    calendar.addEvent({
+      title: name,
+      start: currentDate,  // ZDE musí být aktuálně vybraný den, ne pevné datum!
+      backgroundColor: color,
+      textColor: "#fff",
+      extendedProps: { note }
+    });
 
-          // Uložení směny do databáze
-          fetch("conn.php", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/x-www-form-urlencoded",
-            },
-            body: new URLSearchParams({
-              name: name,
-              shift_date: currentDate,
-              note: note,
-            }),
-          })
-            .then((response) => response.text())
-            .then((data) => {
-              console.log(data);
-            })
-            .catch((error) => {
-              console.error("Chyba:", error);
-            });
-        } else {
-          alert("Tento zaměstnanec již má přiřazenou směnu na tento den!");
-        }
-      }
-
-      function updateDayHeader(date) {
-        const formattedDate = new Date(date).toLocaleDateString("cs-CZ", {
-          day: "2-digit",
-          month: "2-digit",
-          year: "numeric",
-        });
-        const dayHeaders = document.querySelectorAll(
-          ".fc-col-header-cell-cushion"
-        );
-        dayHeaders.forEach((header) => {
-          header.textContent = formattedDate;
-        });
-      }
-
-      window.addEventListener("storage", function (e) {
-        if (e.key === "savedEvents") {
-          loadEvents(calendar);
-        }
-      });
+    // Uložení do DB
+    fetch(window.location.href, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        name: name,
+        shift_date: currentDate,  // opět použijeme správné datum
+        note: note,
+        color: color
+      })
+    })
+    .then(res => res.text())
+    .then(data => console.log("Server:", data))
+    .catch(err => console.error("Chyba:", err));
+  } else {
+    alert("Tento zaměstnanec už má směnu na tento den.");
+  }
+}
     </script>
   </body>
 </html>
