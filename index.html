@@ -12,14 +12,14 @@ if ($conn->connect_error) {
 // API logika podle požadavku
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // přidání nové směny
-    if ($_POST['action'] === 'add') {
+    if (isset($_POST['action']) && $_POST['action'] === 'add') {
         $name = $_POST['name'] ?? '';
         $shift_date = $_POST['shift_date'] ?? '';
         $note = $_POST['note'] ?? '';
         $color = $_POST['color'] ?? '#000000';
 
         if ($name && $shift_date) {
-            $stmt = $conn->prepare("INSERT INTO shifts (name, shift_date, note, color) VALUES (?, ?, ?, ?)");
+            $stmt = $conn->prepare("INSERT INTO shifts (name, shift_date, note, color, created_at) VALUES (?, ?, ?, ?, NOW())");
             $stmt->bind_param("ssss", $name, $shift_date, $note, $color);
             $stmt->execute();
             $stmt->close();
@@ -32,9 +32,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     // mazání směny
-    if ($_POST['action'] === 'delete') {
+    if (isset($_POST['action']) && $_POST['action'] === 'delete') {
         $name = $_POST['name'] ?? '';
         $shift_date = $_POST['shift_date'] ?? '';
+
         if ($name && $shift_date) {
             $stmt = $conn->prepare("DELETE FROM shifts WHERE name = ? AND shift_date = ?");
             $stmt->bind_param("ss", $name, $shift_date);
@@ -236,7 +237,7 @@ if (isset($_GET['load_shifts'])) {
             color: color
           })
         }).then(() => {
-          calendar.refetchEvents(); // načti směny znovu
+          calendar.refetchEvents(); // načti znovu z DB
         });
       } else {
         alert("Tento zaměstnanec už má směnu na tento den.");
