@@ -59,18 +59,6 @@ Zaměstnanci jsou rozděleni do sekcí a vizuálně barevně odlišeni pro lepš
 
 ---
 
-## 🛢️ Databázová tabulka
-
-```sql
-CREATE TABLE shifts (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  name VARCHAR(255) NOT NULL,
-  shift_date DATE NOT NULL,
-  note TEXT,
-  color VARCHAR(7),
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
 ---
 
 🔒 Poznámka k heslu
@@ -91,3 +79,15 @@ Aplikace je optimalizována pro:
 
 ![image](https://github.com/user-attachments/assets/ed2ea27d-45ce-4fb5-b9fb-ba21b91fed42)
 
+
+## 🛢️ Databázová tabulka
+
+```sql
+CREATE TABLE shifts (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  shift_date DATE NOT NULL,
+  note TEXT,
+  color VARCHAR(7),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
