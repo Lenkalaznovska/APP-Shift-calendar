@@ -19,52 +19,48 @@ Zaměstnanci jsou rozděleni do sekcí a vizuálně barevně odlišeni pro lepš
 - **HTML5** – struktura stránky  
 - **CSS3** – stylování a vzhled  
 - **JavaScript** – interaktivní funkce (např. práce s kalendářem, AJAX)  
-- **FullCalendar.js** - pro práci s kalendářem
+- **FullCalendar.js** – interaktivní kalendář pro zobrazení a správu směn
 
 ### 🔙 Backend
 
-- **PHP** – zpracování požadavků a napojení na databázi  
-- **MySQL** – ukládání směn  
+- **PHP (procedurální)** – zpracování požadavků a napojení na databázi  
+- **MySQL** – ukládání informací o směnách
 
 ### 🧰 Vývojové nástroje
 
-- **AJAX (fetch API)** – dynamická komunikace s backendem  
+- **AJAX (fetch API)** – dynamická komunikace mezi frontendem a backendem  
 - **XAMPP** – lokální vývojové prostředí s Apache, MySQL a PHP  
-- **Apache** – webový server pro PHP aplikace  
+- **Apache** – webový server pro PHP aplikace
 
 ---
 
 ## ✨ Funkce aplikace
 
 - ✅ Zobrazení směn ve formátu dne, týdne i měsíce  
-- ✅ Přidání nové směny (výběr zaměstnance, datum, poznámka)  
-- ✅ Barevné rozlišení zaměstnanců  
-- ✅ Detailní přehled směn v modálním okně  
+- ✅ Přidávání nové směny (výběr zaměstnance, datum, poznámka)  
+- ✅ Barevné rozlišení zaměstnanců pro lepší přehlednost  
+- ✅ Detailní přehled směn v modálním okně po kliknutí na den  
 - ✅ Mazání směny chráněné jednoduchým heslem  
-- ✅ Ošetření duplicit (nelze zadat stejnou směnu 2×)  
-- ✅ Plně lokalizované do češtiny  
-- ✅ Intuitivní a jednoduché ovládání  
+- ✅ Ošetření duplicit – nelze přidat stejnou směnu 2× pro jednoho zaměstnance  
+- ✅ Kompletní lokalizace do češtiny  
+- ✅ Intuitivní a jednoduché ovládání vhodné i pro méně zkušené uživatele
 
 ---
 
-🔒 Poznámka k heslu
-Mazání směn je chráněno heslem 12345 – pro účely ukázky
+## 🔒 Poznámka k heslu
+
+Mazání směn je chráněno jednoduchým heslem `12345` – slouží pouze pro demonstrační účely.
 
 ---
 
-📱 Responzivita a přístupnost
+## 📱 Responzivita a přístupnost
+
 Aplikace je optimalizována pro:
 
-🖥️ stolní počítače a notebooky
-
-📱 mobilní zařízení (telefony, tablety)
+- 🖥️ stolní počítače a notebooky  
+- 📱 mobilní zařízení (chytré telefony, tablety)
 
 ---
-
-![image](https://github.com/user-attachments/assets/f1030afa-04d5-49df-b32b-ac2797e79c34)
-
-![image](https://github.com/user-attachments/assets/ed2ea27d-45ce-4fb5-b9fb-ba21b91fed42)
-
 
 ## 🛢️ Databázová tabulka
 
@@ -77,3 +73,7 @@ CREATE TABLE shifts (
   color VARCHAR(7),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+![image](https://github.com/user-attachments/assets/f1030afa-04d5-49df-b32b-ac2797e79c34)
+
+![image](https://github.com/user-attachments/assets/ed2ea27d-45ce-4fb5-b9fb-ba21b91fed42)
