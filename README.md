@@ -5,18 +5,6 @@ Ukázkový projekt z mého portfolia – jednoduchá webová aplikace pro přehl
 
 ---
 
-## 📄 Obsah
-
-- [Popis projektu](#popis-projektu)  
-- [Použité technologie](#použité-technologie)  
-- [Funkce aplikace](#funkce-aplikace)  
-- [Struktura projektu](#struktura-projektu)  
-- [Databázová tabulka](#databázová-tabulka)  
-- [Poznámka k heslu](#poznámka-k-heslu)  
-- [Responzivita a přístupnost](#responzivita-a-přístupnost)
-
----
-
 ## 🧾 Popis projektu
 
 Plánovač směn je praktická aplikace určená pro interní potřeby restaurace nebo bistra, která umožňuje přehledné rozvrhování směn jednotlivých zaměstnanců.  
@@ -56,8 +44,6 @@ Zaměstnanci jsou rozděleni do sekcí a vizuálně barevně odlišeni pro lepš
 - ✅ Ošetření duplicit (nelze zadat stejnou směnu 2×)  
 - ✅ Plně lokalizované do češtiny  
 - ✅ Intuitivní a jednoduché ovládání  
-
----
 
 ---
 
