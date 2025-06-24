@@ -1,44 +1,65 @@
 # 🗓️ Plánovač směn pro zaměstnance
 
-Ukázkový projekt z mého portfolia, který slouží jako webová aplikace pro přehledné plánování směn zaměstnanců v restauraci.  
-🔗 **Projekt je dostupný online:** http://smeny.wz.cz:8080/
+Ukázkový projekt z mého portfolia – jednoduchá webová aplikace pro přehledné plánování směn zaměstnanců v restauraci.  
+👉 [Zobrazit online verzi projektu](http://smeny.wz.cz:8080)
 
 ---
 
-## 🔧 Použité technologie
+## 📄 Obsah
 
-- **HTML5, CSS3, JavaScript** – klientská část aplikace  
-- **PHP (procedurální)** – serverová logika  
-- **MySQL** – databázová vrstva pro ukládání směn  
-- **FullCalendar.js** – knihovna pro interaktivní kalendář  
+- [Popis projektu](#popis-projektu)  
+- [Použité technologie](#použité-technologie)  
+- [Funkce aplikace](#funkce-aplikace)  
+- [Struktura projektu](#struktura-projektu)  
+- [Databázová tabulka](#databázová-tabulka)  
+- [Poznámka k heslu](#poznámka-k-heslu)  
+- [Responzivita a přístupnost](#responzivita-a-přístupnost)
+
+---
+
+## 🧾 Popis projektu
+
+Plánovač směn je praktická aplikace určená pro interní potřeby restaurace nebo bistra, která umožňuje přehledné rozvrhování směn jednotlivých zaměstnanců.  
+Zaměstnanci jsou rozděleni do sekcí a vizuálně barevně odlišeni pro lepší orientaci. Aplikace je lokalizovaná do češtiny a přístupná z mobilních zařízení.
+
+---
+
+## 🛠️ Použité technologie
+
+### 💻 Frontend
+
+- **HTML5** – struktura stránky  
+- **CSS3** – stylování a vzhled  
+- **JavaScript** – interaktivní funkce (např. práce s kalendářem, AJAX)  
+- **FullCalendar.js** – kalendář s drag & drop funkcionalitou  
+
+### 🔙 Backend
+
+- **PHP** – zpracování požadavků a napojení na databázi  
+- **MySQL** – ukládání směn  
+
+### 🧰 Vývojové nástroje
+
 - **AJAX (fetch API)** – dynamická komunikace s backendem  
-- **Responzivní design** – použitelný na mobilních i desktopových zařízeních  
+- **XAMPP** – lokální vývojové prostředí s Apache, MySQL a PHP  
+- **Apache** – webový server pro PHP aplikace  
 
 ---
 
-## ✨ Co aplikace umí
+## ✨ Funkce aplikace
 
-✅ Zobrazit směny zaměstnanců podle dne, týdne nebo měsíce  
-✅ Přidávat nové směny výběrem zaměstnance, dne a poznámky  
-✅ Barevné odlišení jednotlivých zaměstnanců pro přehlednost  
-✅ Zobrazit detail dne v modálním okně po kliknutí  
-✅ Mazání směn po zadání jednoduchého hesla (např. pro vedoucího směny)  
-✅ Zabránění duplicitám – nelze přidat stejnou směnu pro jednoho zaměstnance ve stejný den  
-✅ Plná lokalizace do češtiny  
-✅ Přístupná i pro méně zkušené uživatele díky jednoduchému a intuitivnímu rozhraní  
-
----
-
-## 🧩 Struktura aplikace
-
-- `index.php` – hlavní soubor s HTML, PHP a JavaScriptem  
-- `style.css` – stylování pro layout a komponenty  
-- `FullCalendar.js` – napojený přes CDN  
-- **MySQL databáze** – tabulka `shifts` pro ukládání směn  
+- ✅ Zobrazení směn ve formátu dne, týdne i měsíce  
+- ✅ Přidání nové směny (výběr zaměstnance, datum, poznámka)  
+- ✅ Barevné rozlišení zaměstnanců  
+- ✅ Detailní přehled směn v modálním okně  
+- ✅ Mazání směny chráněné jednoduchým heslem  
+- ✅ Ošetření duplicit (nelze zadat stejnou směnu 2×)  
+- ✅ Plně lokalizované do češtiny  
+- ✅ Intuitivní a jednoduché ovládání  
 
 ---
 
-## 🛠️ Databázová tabulka (stručně)
+## 🛢️ Databázová tabulka
 
 ```sql
 CREATE TABLE shifts (
@@ -49,21 +70,22 @@ CREATE TABLE shifts (
   color VARCHAR(7),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-```
-
-## 🔒 Poznámka k heslu
-
-Mazání směn je chráněno jednoduchým heslem (`12345`) – pro účely ukázky.
 
 ---
 
-## 📱 Responzivita a přístupnost
+🔒 Poznámka k heslu
+Mazání směn je chráněno heslem 12345 – pro účely ukázky
 
+---
+
+📱 Responzivita a přístupnost
 Aplikace je optimalizována pro:
 
-- stolní počítače a notebooky  
-- mobilní zařízení (smartphony, tablety)
+🖥️ stolní počítače a notebooky
 
+📱 mobilní zařízení (telefony, tablety)
+
+---
 
 ![image](https://github.com/user-attachments/assets/f1030afa-04d5-49df-b32b-ac2797e79c34)
 
