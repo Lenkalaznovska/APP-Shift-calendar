@@ -19,7 +19,7 @@ Zaměstnanci jsou rozděleni do sekcí a vizuálně barevně odlišeni pro lepš
 - **HTML5** – struktura stránky  
 - **CSS3** – stylování a vzhled  
 - **JavaScript** – interaktivní funkce (např. práce s kalendářem, AJAX)  
-- **FullCalendar.js** – kalendář s drag & drop funkcionalitou  
+- **FullCalendar.js** - pro práci s kalendářem
 
 ### 🔙 Backend
 
