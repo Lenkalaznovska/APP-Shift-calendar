@@ -1,6 +1,7 @@
 # 🗓️ Plánovač směn pro zaměstnance
 
 Ukázkový projekt z mého portfolia – jednoduchá webová aplikace pro přehledné plánování směn zaměstnanců v restauraci.  
+
 👉 [Zobrazit online verzi projektu](http://smeny.wz.cz:8080)
 
 ---
