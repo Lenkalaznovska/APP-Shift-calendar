@@ -1,15 +1,16 @@
-# 🗓️ Plánovač směn pro zaměstnance
+# 🗓️ Employee Shift Planner
 
-Ukázkový projekt z mého portfolia – jednoduchá webová aplikace pro přehledné plánování směn zaměstnanců v restauraci.  
+A sample project from my portfolio – a simple web application for clear and efficient planning of employee shifts in a restaurant.
 
-👉 [Zobrazit online verzi projektu](http://smeny.wz.cz:8080)
+👉 [View the live project](http://smeny.wz.cz:8080)
 
 ---
 
-## 🧾 Popis projektu
+## 🧾 Project Description
 
-Plánovač směn je praktická aplikace určená pro interní potřeby restaurace nebo bistra, která umožňuje přehledné rozvrhování směn jednotlivých zaměstnanců.  
-Zaměstnanci jsou rozděleni do sekcí a vizuálně barevně odlišeni pro lepší orientaci. Aplikace je lokalizovaná do češtiny a přístupná z mobilních zařízení.
+The Shift Planner is a practical web application intended for internal use in a restaurant or bistro.  
+It allows for easy scheduling of employee shifts. Employees are visually distinguished by color and grouped for better orientation.  
+The application is localized in Czech and accessible from mobile devices.
 
 ![image](https://github.com/user-attachments/assets/f1030afa-04d5-49df-b32b-ac2797e79c34)
 
@@ -17,57 +18,57 @@ Zaměstnanci jsou rozděleni do sekcí a vizuálně barevně odlišeni pro lepš
 
 ---
 
-## 🛠️ Použité technologie
+## 🛠️ Technologies Used
 
 ### 💻 Frontend
 
-- **HTML5** – struktura stránky  
-- **CSS3** – stylování a vzhled  
-- **JavaScript** – interaktivní funkce (např. práce s kalendářem, AJAX)  
-- **FullCalendar.js** – interaktivní kalendář pro zobrazení a správu směn
+- **HTML5** – page structure  
+- **CSS3** – styling and layout  
+- **JavaScript** – interactive features (e.g. calendar handling, AJAX)  
+- **FullCalendar.js** – interactive calendar for displaying and managing shifts
 
 ### 🔙 Backend
 
-- **PHP (procedurální)** – zpracování požadavků a napojení na databázi  
-- **MySQL** – ukládání informací o směnách
+- **PHP (procedural)** – request processing and database interaction  
+- **MySQL** – storing shift data
 
-### 🧰 Vývojové nástroje
+### 🧰 Development Tools
 
-- **AJAX (fetch API)** – dynamická komunikace mezi frontendem a backendem  
-- **XAMPP** – lokální vývojové prostředí s Apache, MySQL a PHP  
-- **Apache** – webový server pro PHP aplikace
-
----
-
-## ✨ Funkce aplikace
-
-- ✅ Zobrazení směn ve formátu dne, týdne i měsíce  
-- ✅ Přidávání nové směny (výběr zaměstnance, datum, poznámka)  
-- ✅ Barevné rozlišení zaměstnanců pro lepší přehlednost  
-- ✅ Detailní přehled směn v modálním okně po kliknutí na den  
-- ✅ Mazání směny chráněné jednoduchým heslem  
-- ✅ Ošetření duplicit – nelze přidat stejnou směnu 2× pro jednoho zaměstnance  
-- ✅ Kompletní lokalizace do češtiny  
-- ✅ Intuitivní a jednoduché ovládání vhodné i pro méně zkušené uživatele
+- **AJAX (fetch API)** – dynamic communication between frontend and backend  
+- **XAMPP** – local development environment with Apache, MySQL, and PHP  
+- **Apache** – web server for running PHP applications
 
 ---
 
-## 🔒 Poznámka k heslu
+## ✨ Application Features
 
-Mazání směn je chráněno jednoduchým heslem `12345` – slouží pouze pro demonstrační účely.
-
----
-
-## 📱 Responzivita a přístupnost
-
-Aplikace je optimalizována pro:
-
-- 🖥️ stolní počítače a notebooky  
-- 📱 mobilní zařízení (chytré telefony, tablety)
+- ✅ View shifts in daily, weekly, or monthly format  
+- ✅ Add a new shift (select employee, date, and note)  
+- ✅ Color-coded employees for clarity  
+- ✅ View shift details in a modal window by clicking a day  
+- ✅ Delete shift protected by a simple password  
+- ✅ Prevent duplicate entries – cannot assign the same shift twice to the same person  
+- ✅ Fully localized into Czech  
+- ✅ Intuitive and user-friendly interface, even for non-technical users
 
 ---
 
-## 🛢️ Databázová tabulka
+## 🔒 Password Note
+
+Deleting a shift is protected by a simple password `12345` – for demonstration purposes only.
+
+---
+
+## 📱 Responsiveness & Accessibility
+
+The application is optimized for:
+
+- 🖥️ Desktop and laptop computers  
+- 📱 Mobile devices (phones and tablets)
+
+---
+
+## 🛢️ Database Table
 
 ```sql
 CREATE TABLE shifts (
