@@ -75,6 +75,8 @@ CREATE TABLE shifts (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+---
+
 ![image](https://github.com/user-attachments/assets/f1030afa-04d5-49df-b32b-ac2797e79c34)
 
 ![image](https://github.com/user-attachments/assets/ed2ea27d-45ce-4fb5-b9fb-ba21b91fed42)
