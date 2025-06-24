@@ -11,6 +11,10 @@ Ukázkový projekt z mého portfolia – jednoduchá webová aplikace pro přehl
 Plánovač směn je praktická aplikace určená pro interní potřeby restaurace nebo bistra, která umožňuje přehledné rozvrhování směn jednotlivých zaměstnanců.  
 Zaměstnanci jsou rozděleni do sekcí a vizuálně barevně odlišeni pro lepší orientaci. Aplikace je lokalizovaná do češtiny a přístupná z mobilních zařízení.
 
+![image](https://github.com/user-attachments/assets/f1030afa-04d5-49df-b32b-ac2797e79c34)
+
+![image](https://github.com/user-attachments/assets/ed2ea27d-45ce-4fb5-b9fb-ba21b91fed42)
+
 ---
 
 ## 🛠️ Použité technologie
@@ -74,9 +78,3 @@ CREATE TABLE shifts (
   color VARCHAR(7),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-
----
-
-![image](https://github.com/user-attachments/assets/f1030afa-04d5-49df-b32b-ac2797e79c34)
-
-![image](https://github.com/user-attachments/assets/ed2ea27d-45ce-4fb5-b9fb-ba21b91fed42)
