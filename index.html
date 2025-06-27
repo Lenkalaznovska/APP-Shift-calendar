@@ -1,17 +1,20 @@
 <?php
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
+// index.php - Profesionální plánovač směn v jednom souboru
 
-$host = "";
-$dbname = "";
-$username = "";
-$password = "";
+// --- 1. KONFIGURACE APLIKACE ---
 
-$conn = new mysqli($host, $username, $password, $dbname);
-if ($conn->connect_error) die("Připojení selhalo: " . $conn->connect_error);
+/**
+ * DŮLEŽITÉ: V reálném provozu ukládejte přihlašovací údaje bezpečněji,
+ * například mimo veřejně dostupný adresář webu pomocí proměnných prostředí.
+ */
+const DB_HOST = "sql6.webzdarma.cz";
+const DB_NAME = "smenywzcz0563";
+const DB_USER = "smenywzcz0563";
+const DB_PASS = "._LLhU8_%&R52ONuT57B";
+const DB_CHARSET = "utf8mb4";
 
-// Zaměstnanci a jejich barvy (slouží jako master data)
-$employees = [
+// Seznam zaměstnanců (v budoucnu by se načítal z databáze)
+const EMPLOYEES = [
     'Kuchyně' => [
         ['name' => 'Hanka', 'color' => '#FFEB3B'],
         ['name' => 'Marie', 'color' => '#FF7F80'],
@@ -33,480 +36,624 @@ $employees = [
     ]
 ];
 
-// Funkce pro kontrastní barvu textu k barvě pozadí
-function getContrastColor($hexColor)
-{
-    $hexColor = str_replace('#', '', $hexColor);
-    $r = hexdec(substr($hexColor, 0, 2));
-    $g = hexdec(substr($hexColor, 2, 2));
-    $b = hexdec(substr($hexColor, 4, 6));
-    $yiq = (($r * 299) + ($g * 587) + ($b * 114)) / 1000;
-    return ($yiq >= 128) ? '#000000' : '#FFFFFF';
+// --- 2. PHP TŘÍDY PRO LOGIKU APLIKACE ---
+
+/**
+ * Třída Database pro správu připojení k databázi (Singleton pattern)
+ */
+class Database {
+    private static $instance = null;
+    private $pdo;
+
+    private function __construct() {
+        $dsn = "mysql:host=" . DB_HOST . ";dbname=" . DB_NAME . ";charset=" . DB_CHARSET;
+        $options = [
+            PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            PDO::ATTR_EMULATE_PREPARES   => false,
+        ];
+        try {
+            $this->pdo = new PDO($dsn, DB_USER, DB_PASS, $options);
+        } catch (PDOException $e) {
+            // Logovat chybu, neukazovat uživateli citlivé informace
+            error_log("Chyba připojení k DB: " . $e->getMessage());
+            // Zastavit aplikaci s obecnou chybou
+            http_response_code(500);
+            die(json_encode(['error' => 'Chyba připojení k databázi.']));
+        }
+    }
+
+    public static function getInstance(): self {
+        if (self::$instance === null) {
+            self::$instance = new self();
+        }
+        return self::$instance;
+    }
+
+    public function getConnection(): PDO {
+        return $this->pdo;
+    }
 }
 
-// POST - uložení / smazání / přesun / načtení dne
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Načtení VŠECH směn pro FullCalendar AJAX source
-    if (isset($_GET['fetch_all_shifts'])) {
-        $shifts = [];
-        $res = $conn->query("SELECT id, name, shift_date, note, color FROM shifts");
-        while ($row = $res->fetch_assoc()) {
-            $shifts[] = [
-                'id' => $row['id'],
-                'title' => $row['name'],
-                'start' => $row['shift_date'],
-                'allDay' => true,
-                'backgroundColor' => $row['color'],
-                'borderColor' => $row['color'],
-                'textColor' => getContrastColor($row['color']),
-                'extendedProps' => [
-                    'note' => $row['note'],
-                    'name' => $row['name'], // Original name for deletion/move
-                    'originalColor' => $row['color']
-                ]
-            ];
-        }
-        header('Content-Type: application/json');
-        echo json_encode($shifts);
-        $conn->close();
-        exit;
+/**
+ * Třída ShiftApi pro zpracování všech datových operací se směnami
+ */
+class ShiftApi {
+    private PDO $pdo;
+
+    public function __construct() {
+        $this->pdo = Database::getInstance()->getConnection();
     }
     
-    // Mazání směny s heslem
-    if (isset($_GET['delete'])) {
-        $name = $_POST['name'] ?? '';
-        $shift_date = $_POST['shift_date'] ?? '';
-        $password = $_POST['password'] ?? '';
-        if ($password !== '12345') {
-            echo "Neplatné heslo";
-            exit;
-        }
-        if ($name && $shift_date) {
-            $stmt = $conn->prepare("DELETE FROM shifts WHERE name=? AND shift_date=?");
-            $stmt->bind_param("ss", $name, $shift_date);
-            $stmt->execute();
-            if ($stmt->affected_rows > 0) {
-                echo "Smazáno";
-            } else {
-                echo "Směna nenalezena";
-            }
-            $stmt->close();
-        } else echo "Chybí data pro smazání";
-        exit;
-    }
-    // Načtení směn pro konkrétní den (pro modal)
-    elseif (isset($_GET['fetch_day'])) {
-        $shift_date = $_POST['shift_date'] ?? '';
-        if (!$shift_date) {
-            echo json_encode(['error' => 'Chybí datum']);
-            exit;
-        }
-        $stmt = $conn->prepare("SELECT name, note, color FROM shifts WHERE shift_date=? ORDER BY name");
-        $stmt->bind_param("s", $shift_date);
-        $stmt->execute();
-        $res = $stmt->get_result();
-        $shifts = [];
-        while ($row = $res->fetch_assoc()) {
-            $shifts[] = $row;
-        }
-        $stmt->close();
-        header('Content-Type: application/json');
-        echo json_encode(['date' => $shift_date, 'shifts' => $shifts]);
-        exit;
-    }
-    // Přesun směny (drag & drop)
-    elseif (isset($_GET['move'])) {
-        $name = $_POST['name'] ?? '';
-        $old_date = $_POST['old_date'] ?? '';
-        $new_date = $_POST['new_date'] ?? '';
-        if (!$name || !$old_date || !$new_date) {
-            echo "Chybí data pro přesun";
-            exit;
-        }
-        // Kontrola, jestli na novém datu už není stejná směna
-        $stmtCheck = $conn->prepare("SELECT COUNT(*) FROM shifts WHERE name=? AND shift_date=?");
-        $stmtCheck->bind_param("ss", $name, $new_date);
-        $stmtCheck->execute();
-        $stmtCheck->bind_result($count);
-        $stmtCheck->fetch();
-        $stmtCheck->close();
-
-        if ($count > 0) {
-            echo "Duplicitní směna na cílovém datu";
-            exit;
-        }
-
-        $stmt = $conn->prepare("UPDATE shifts SET shift_date=? WHERE name=? AND shift_date=?");
-        $stmt->bind_param("sss", $new_date, $name, $old_date);
-        $stmt->execute();
-        if ($stmt->affected_rows === 0) {
-            echo "Směna nenalezena k přesunu";
-            $stmt->close();
-            exit;
-        }
-        $stmt->close();
-        echo "OK";
-        exit;
-    }
-    // Přidání nové směny
-    else {
-        $name = $_POST['name'] ?? '';
-        $shift_date = $_POST['shift_date'] ?? '';
-        $note = $_POST['note'] ?? '';
-        $color = $_POST['color'] ?? '#000000'; // Defaultní barva pokud není nalezena
-
-        if ($name && $shift_date) {
-            // Zabránit duplicitám
-            $stmtCheck = $conn->prepare("SELECT COUNT(*) FROM shifts WHERE name=? AND shift_date=?");
-            $stmtCheck->bind_param("ss", $name, $shift_date);
-            $stmtCheck->execute();
-            $stmtCheck->bind_result($count);
-            $stmtCheck->fetch();
-            $stmtCheck->close();
-            if ($count == 0) {
-                $stmt = $conn->prepare("INSERT INTO shifts (name, shift_date, note, color) VALUES (?, ?, ?, ?)");
-                $stmt->bind_param("ssss", $name, $shift_date, $note, $color);
-                $stmt->execute();
-                if ($stmt->affected_rows > 0) {
-                    echo "OK";
-                } else {
-                    echo "Chyba při ukládání směny";
+    private function getEmployeeColor(string $name): string {
+        foreach (EMPLOYEES as $department) {
+            foreach ($department as $employee) {
+                if ($employee['name'] === $name) {
+                    return $employee['color'];
                 }
-                $stmt->close();
-            } else echo "Duplicitní směna";
-        } else echo "Chybí data";
-        exit;
+            }
+        }
+        return '#3b82f6'; // Výchozí barva
+    }
+
+    public function handleRequest(): void {
+        $method = $_SERVER['REQUEST_METHOD'];
+        // Pro PUT a DELETE metody musíme data číst z 'php://input'
+        $input = json_decode(file_get_contents('php://input'), true) ?? [];
+        
+        // Pro POST požadavky mohou data přijít i v $_POST (pokud nejsou JSON)
+        if ($method === 'POST' && empty($input)) {
+             $input = $_POST;
+        }
+
+        try {
+            switch ($method) {
+                case 'GET':
+                    // GET je specificky pro načtení všech směn
+                    $this->getShifts();
+                    break;
+                case 'POST':
+                    $this->addShift($input);
+                    break;
+                case 'PUT':
+                    $this->updateShift($input);
+                    break;
+                case 'DELETE':
+                    $this->deleteShift($input);
+                    break;
+                default:
+                    $this->sendResponse(405, ['error' => 'Metoda není povolena.']);
+                    break;
+            }
+        } catch (Exception $e) {
+            error_log("API Error: " . $e->getMessage());
+            $this->sendResponse(500, ['error' => 'Interní chyba serveru.']);
+        }
+    }
+
+    private function getShifts(): void {
+        $stmt = $this->pdo->query("SELECT id, name, shift_date, note, color FROM shifts ORDER BY shift_date ASC, name ASC");
+        $shifts = $stmt->fetchAll();
+        $this->sendResponse(200, $shifts);
+    }
+
+    private function addShift(array $data): void {
+        $this->validateShiftData($data, ['name', 'shift_date']);
+        if ($data['shift_date'] < date('Y-m-d')) {
+            $this->sendResponse(400, ['error' => 'Nelze přidat směnu do minulosti.']);
+            return;
+        }
+        $color = $this->getEmployeeColor($data['name']);
+        $sql = "INSERT INTO shifts (name, shift_date, note, color) VALUES (:name, :shift_date, :note, :color)";
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute([
+            ':name' => $data['name'],
+            ':shift_date' => $data['shift_date'],
+            ':note' => $data['note'] ?? '',
+            ':color' => $color,
+        ]);
+        $newId = $this->pdo->lastInsertId();
+        $this->sendResponse(201, ['id' => (int)$newId, 'message' => 'Směna úspěšně vytvořena.']);
+    }
+    
+    private function updateShift(array $data): void {
+        $this->validateShiftData($data, ['id', 'shift_date']);
+        $this->checkIfShiftIsInPast($data['id']);
+        if ($data['shift_date'] < date('Y-m-d')) {
+            $this->sendResponse(400, ['error' => 'Nelze přesunout směnu do minulosti.']);
+            return;
+        }
+        $sql = "UPDATE shifts SET shift_date = :shift_date, note = :note WHERE id = :id";
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute([':shift_date' => $data['shift_date'], ':note' => $data['note'] ?? '', ':id' => $data['id']]);
+        if ($stmt->rowCount() > 0) {
+            $this->sendResponse(200, ['id' => (int)$data['id'], 'message' => 'Směna aktualizována.']);
+        } else {
+            $this->sendResponse(200, ['id' => (int)$data['id'], 'message' => 'Žádné změny k uložení.']);
+        }
+    }
+
+    private function deleteShift(array $data): void {
+        $this->validateShiftData($data, ['id']);
+        $this->checkIfShiftIsInPast($data['id']);
+        $stmt = $this->pdo->prepare("DELETE FROM shifts WHERE id = :id");
+        $stmt->execute([':id' => $data['id']]);
+        if ($stmt->rowCount() > 0) {
+            $this->sendResponse(200, ['id' => (int)$data['id'], 'message' => 'Směna smazána.']);
+        } else {
+            $this->sendResponse(404, ['error' => 'Směna pro smazání nenalezena.']);
+        }
+    }
+
+    private function validateShiftData(array $data, array $requiredFields): void {
+        foreach ($requiredFields as $field) {
+            if (empty($data[$field])) {
+                $this->sendResponse(400, ['error' => "Chybějící povinné pole: {$field}"]);
+                exit;
+            }
+        }
+    }
+
+    private function checkIfShiftIsInPast(int $id): void {
+        $stmt = $this->pdo->prepare("SELECT shift_date FROM shifts WHERE id = :id");
+        $stmt->execute([':id' => $id]);
+        $shift = $stmt->fetch();
+        if (!$shift) {
+            $this->sendResponse(404, ['error' => 'Směna nenalezena.']);
+            exit;
+        }
+        if ($shift['shift_date'] < date('Y-m-d')) {
+            $this->sendResponse(400, ['error' => 'Nelze manipulovat se směnami v minulosti.']);
+            exit;
+        }
+    }
+
+    private function sendResponse(int $statusCode, array $data): void {
+        http_response_code($statusCode);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode($data);
     }
 }
 
-// Sloučíme všechny zaměstnance do jednoho pole pro select box
-$allEmployees = [];
-foreach ($employees as $group) {
-    foreach ($group as $empl) {
-        $allEmployees[] = $empl;
-    }
+// --- 3. API ROUTER ---
+// Tato část kódu rozhodne, zda se má zobrazit HTML stránka, nebo zpracovat API požadavek.
+// API požadavek poznáme podle toho, že se nejedná o metodu GET pro načtení stránky.
+// GET požadavky s parametrem 'api=true' jsou také pro API (pro načtení dat).
+if ($_SERVER['REQUEST_METHOD'] !== 'GET' || isset($_GET['api'])) {
+    $api = new ShiftApi();
+    $api->handleRequest();
+    exit; // Důležité: Ukončíme skript po odeslání API odpovědi.
 }
-usort($allEmployees, function ($a, $b) {
-    return strcmp($a['name'], $b['name']);
-});
 
-$conn->close();
+// Pokud kód dojde až sem, znamená to, že se má vykreslit HTML stránka.
+$employees_json = json_encode(EMPLOYEES);
+
 ?>
-
 <!DOCTYPE html>
 <html lang="cs">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Plánovač směn - San Marino</title>
-    <link rel="stylesheet" href="style.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.css" />
-    <script src="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/locales-all.min.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Profesionální Plánovač Směn</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        /* Základní styly pro rozvržení a funkčnost. */
+        html, body {
+            height: 100%;
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Inter', sans-serif;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+        body { display: flex; flex-direction: column; background-color: #f8fafc; color: #1f2937; }
+        .main-container { flex-grow: 1; overflow-y: auto; padding: 1.5rem; }
+        .modal-transition { transition: opacity 0.25s ease, transform 0.25s ease; }
+        .modal-hidden { opacity: 0; transform: scale(0.95); pointer-events: none; }
+        .modal-visible { opacity: 1; transform: scale(1); pointer-events: auto; }
+        .calendar-day:hover .add-shift-plus { opacity: 1; }
+        .add-shift-plus { opacity: 0; transition: opacity 0.2s ease-in-out; }
+        .loading-spinner { border: 4px solid rgba(0, 0, 0, 0.1); border-left-color: #ffffff; border-radius: 50%; width: 1.5rem; height: 1.5rem; animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .calendar-day { min-height: 120px; display: flex; flex-direction: column; }
+        .shifts-container { flex-grow: 1; overflow-y: auto; }
+        .shift-item { cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .past-day { background-color: #f9fafb; cursor: not-allowed; pointer-events: none; opacity: 0.7; }
+        .past-day .add-shift-plus { display: none !important; }
+        .past-day .shift-item { cursor: default; }
+
+        @media (max-width: 768px) {
+            .main-container { padding: 1rem; }
+            .calendar-day { min-height: 90px; }
+            .shift-item { font-size: 0.7rem; padding: 0.2rem 0.4rem; }
+        }
+    </style>
 </head>
-<body>
+<body class="bg-gray-50">
 
-    <header>Plánovač směn San Marino</header>
-
-    <div class="controls">
-        <button id="btnPrevMonth" aria-label="Předchozí měsíc">←</button>
-        <div id="monthLabel" aria-live="polite" aria-atomic="true">Načítám...</div>
-        <button id="btnNextMonth" aria-label="Následující měsíc">→</button>
-
-        <select id="viewSelector" aria-label="Výběr zobrazení kalendáře">
-            <option value="dayGridMonth">Měsíční</option>
-            <option value="timeGridWeek">Týdenní</option>
-            <option value="timeGridDay">Denní</option>
-        </select>
-    </div>
-
-    <div class="main" role="main">
-        <div id="calendar" aria-label="Kalendář směn"></div>
-        <aside id="employees" aria-label="Seznam zaměstnanců">
-            <h3>Zaměstnanci a jejich barvy</h3>
-            <?php foreach ($employees as $group => $empls): ?>
-                <div class="group">
-                    <h4><?=htmlspecialchars($group)?></h4>
-                    <?php foreach ($empls as $empl): ?>
-                        <div class="employee" tabindex="0"
-                            style="background-color: <?=htmlspecialchars($empl['color'])?>; color: <?=getContrastColor($empl['color'])?>">
-                            <?=htmlspecialchars($empl['name'])?>
-                        </div>
-                    <?php endforeach; ?>
-                </div>
-            <?php endforeach; ?>
-        </aside>
-    </div>
-
-    <div id="modalOverlay" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
-        <div id="modal">
-            <div class="close-icon" role="button" aria-label="Zavřít dialog" tabindex="0"></div>
-            <h2 id="modalTitle">Směny dne <span id="modalDateDisplay"></span></h2>
-            <ul id="shiftList"></ul>
-
-            <form id="addShiftForm" aria-label="Formulář pro přidání nové směny">
-                <label for="selectName">Zaměstnanec</label>
-                <select id="selectName" required>
-                    <option value="" disabled selected>Vyberte zaměstnance</option>
-                    <?php foreach ($allEmployees as $empl): ?>
-                        <option value="<?=htmlspecialchars($empl['name'])?>" data-color="<?=htmlspecialchars($empl['color'])?>">
-                            <?=htmlspecialchars($empl['name'])?>
-                        </option>
-                    <?php endforeach; ?>
-                </select>
-
-                <label for="inputDate">Datum</label>
-                <input type="date" id="inputDate" required />
-
-                <label for="inputNote">Poznámka (volitelně)</label>
-                <input type="text" id="inputNote" placeholder="Např. Směna od 17:00" />
-
-                <button type="submit">Přidat směnu</button>
-            </form>
-            <button class="close-btn">Zavřít</button>
+    <div id="app-root" class="h-full flex flex-col">
+        <div class="flex items-center justify-center h-full">
+            <div class="text-center">
+                <h2 class="text-2xl font-semibold text-gray-700">Načítání aplikace...</h2>
+                <div class="loading-spinner w-12 h-12 mx-auto mt-4" style="border-left-color: #3b82f6;"></div>
+            </div>
         </div>
     </div>
+    
+    <div id="shift-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 modal-transition modal-hidden z-50">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-md transform transition-all">
+            <form id="shift-form" class="p-8">
+                <h2 id="modal-title" class="text-2xl font-bold mb-6 text-gray-800">Přidat směnu</h2>
+                <input type="hidden" id="shift-id" name="id">
+                
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Datum směny</label>
+                    <input type="date" id="shift_date" name="shift_date" required class="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div class="mb-4">
+                    <label for="name" class="block text-sm font-medium text-gray-700 mb-1">Zaměstnanec</label>
+                    <select id="name" name="name" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500">
+                    </select>
+                </div>
+                <div class="mb-6">
+                    <label for="note" class="block text-sm font-medium text-gray-700 mb-1">Poznámka (např. čas)</label>
+                    <textarea id="note" name="note" rows="3" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Např. 17:00 - 23:00"></textarea>
+                </div>
 
-<script>
-document.addEventListener('DOMContentLoaded', function () {
-    let selectedDate = null;
-    let lastSelectedDayEl = null;
+                <div class="flex justify-between items-center flex-wrap gap-4">
+                    <button type="button" id="delete-btn-in-modal" class="hidden bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-6 rounded-lg transition-colors flex items-center justify-center gap-2 min-w-[100px]">
+                        <span id="delete-btn-text">Smazat</span>
+                        <div id="delete-spinner" class="loading-spinner hidden"></div>
+                    </button>
+                    <div class="flex justify-end gap-4 flex-grow sm:flex-grow-0">
+                        <button type="button" id="cancel-btn" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-6 rounded-lg transition-colors">Zrušit</button>
+                        <button type="submit" id="save-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg transition-colors flex items-center justify-center gap-2 min-w-[100px]">
+                            <span id="save-btn-text">Uložit</span>
+                            <div id="save-spinner" class="loading-spinner hidden"></div>
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <div id="toast" class="fixed top-5 right-5 bg-green-500 text-white py-2 px-5 rounded-lg shadow-lg opacity-0 -translate-y-10 transition-all duration-300 z-50">
+        <p id="toast-message"></p>
+    </div>
 
-    const calendarEl = document.getElementById('calendar');
-    const monthLabel = document.getElementById('monthLabel');
-    const viewSelector = document.getElementById('viewSelector');
-    const modalOverlay = document.getElementById('modalOverlay');
-    const shiftList = document.getElementById('shiftList');
-    const addShiftForm = document.getElementById('addShiftForm');
-    const selectName = document.getElementById('selectName');
-    const inputDate = document.getElementById('inputDate');
-    const inputNote = document.getElementById('inputNote');
-    const closeIcon = document.querySelector('#modal .close-icon');
-    const modalCloseBtn = document.querySelector('#modal button.close-btn');
-    const modalDateDisplay = document.getElementById('modalDateDisplay');
+    <script>
+        // --- 4. KLIENTSKÝ JAVASCRIPT ---
 
-    const employeeColors = {};
-    document.querySelectorAll('#selectName option').forEach(option => {
-        if (option.dataset.color) {
-            employeeColors[option.value] = option.dataset.color;
-        }
-    });
+        // Předání dat z PHP do JS
+        const AppData = {
+            employees: <?php echo $employees_json; ?>
+        };
 
-    const calendar = new FullCalendar.Calendar(calendarEl, {
-        initialView: 'timeGridWeek',
-        locale: 'cs',
-        headerToolbar: false,
-        editable: false,
-        selectable: false,
-        height: 'auto',
-        contentHeight: 'auto',
-        expandRows: true,
-
-        views: {
-            timeGridWeek: {
-                type: 'timeGrid',
-                duration: { days: 7 },
-                allDaySlot: true,
-                slotMinTime: "24:00",
-                slotMaxTime: "24:00"
-            },
-            timeGridDay: {
-                type: 'timeGrid',
-                duration: { days: 1 },
-                allDaySlot: true,
-                slotMinTime: "24:00",
-                slotMaxTime: "24:00"
-            }
-        },
-
-        events: {
-            url: '?fetch_all_shifts=1',
-            method: 'POST',
-            failure: () => alert('Chyba při načítání směn!')
-        },
-
-        eventDidMount(info) {
-            info.el.style.backgroundColor = info.event.backgroundColor;
-            info.el.style.borderColor = info.event.borderColor;
-            info.el.style.color = info.event.textColor;
-            if (info.event.extendedProps.note) {
-                info.el.title = info.event.extendedProps.note;
-            }
-        },
-
-        eventClick: function(info) {
-            // Zastaví šíření události, aby se nespustil dateClick
-            info.jsEvent.stopPropagation(); 
-            const clickedDate = info.event.startStr.split('T')[0]; // Získání pouze data bez času
-            selectedDate = clickedDate;
-            openModalForDate(clickedDate);
-            
-            // Odebrání předchozího označení a přidání nového
-            if (lastSelectedDayEl) lastSelectedDayEl.classList.remove('fc-day-selected');
-            lastSelectedDayEl = info.el.closest('.fc-day, .fc-daygrid-day, .fc-timegrid-day');
-            if (lastSelectedDayEl) {
-                lastSelectedDayEl.classList.add('fc-day-selected');
-            }
-        },
-
-        dateClick(info) {
-            const clickedDate = info.dateStr.split('T')[0]; // Získání pouze data bez času
-            // Pouze otevře modal, pokud není již otevřen pro stejné datum
-            if (selectedDate === clickedDate && modalOverlay.style.display === 'flex') return;
-
-            selectedDate = clickedDate;
-            openModalForDate(clickedDate);
-
-            if (lastSelectedDayEl) lastSelectedDayEl.classList.remove('fc-day-selected');
-            if (info.dayEl) {
-                lastSelectedDayEl = info.dayEl;
-                info.dayEl.classList.add('fc-day-selected');
-            }
-        },
-
-        datesSet(info) {
-            const view = info.view;
-            const formatter = new Intl.DateTimeFormat('cs-CZ', view.type === 'timeGridDay'
-                ? { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }
-                : { month: 'long', year: 'numeric' });
-            monthLabel.textContent = formatter.format(view.currentStart);
-            viewSelector.value = view.type;
-        }
-    });
-
-    calendar.render();
-
-    document.getElementById('btnPrevMonth').addEventListener('click', () => calendar.prev());
-    document.getElementById('btnNextMonth').addEventListener('click', () => calendar.next());
-    viewSelector.addEventListener('change', e => calendar.changeView(e.target.value));
-
-    function openModalForDate(dateString) {
-        modalOverlay.style.display = 'flex';
-        modalDateDisplay.textContent = new Date(dateString).toLocaleDateString('cs-CZ', {
-            weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
-        });
-        inputDate.value = dateString;
-        shiftList.innerHTML = '';
-
-        fetch('?fetch_day=1', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: new URLSearchParams({ shift_date: dateString })
-        })
-        .then(res => res.json())
-        .then(data => {
-            if (data.shifts && data.shifts.length > 0) {
-                data.shifts.forEach(shift => {
-                    const li = document.createElement('li');
-                    li.innerHTML = `
-                        <span class="shift-color" style="background-color: ${shift.color};"></span>
-                        <span class="shift-name">${shift.name}</span>
-                        ${shift.note ? `<span class="shift-note" title="${shift.note}">(${shift.note})</span>` : ''}
-                        <button class="delete-shift-btn" title="Smazat směnu" data-name="${shift.name}" data-date="${dateString}" style="background:none; border:none; cursor:pointer; margin-left:auto;">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20" viewBox="0 0 24 24">
-                                <polyline points="3 6 5 6 21 6"></polyline>
-                                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
-                                <path d="M10 11v6"></path>
-                                <path d="M14 11v6"></path>
-                                <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path>
-                            </svg>
-                        </button>`;
-                    shiftList.appendChild(li);
-                });
-            } else {
-                shiftList.innerHTML = '<li>Pro tento den nejsou směny.</li>';
-            }
-        })
-        .catch(error => {
-            console.error('Chyba při načítání směn:', error);
-            shiftList.innerHTML = '<li>Chyba při načítání směn.</li>';
-        });
-    }
-
-    function closeModal() {
-        modalOverlay.style.display = 'none';
-        if (lastSelectedDayEl) lastSelectedDayEl.classList.remove('fc-day-selected');
-        selectedDate = null;
-        calendar.refetchEvents();
-    }
-
-    closeIcon.addEventListener('click', closeModal);
-    modalCloseBtn.addEventListener('click', closeModal);
-    modalOverlay.addEventListener('click', function (e) {
-        if (e.target === modalOverlay && window.innerWidth > 900) closeModal();
-    });
-
-    shiftList.addEventListener('click', function (e) {
-        if (e.target.closest('.delete-shift-btn')) {
-            const btn = e.target.closest('.delete-shift-btn');
-            const name = btn.dataset.name;
-            const date = btn.dataset.date;
-            const password = prompt(`Pro smazání směny "${name}" zadejte heslo:`);
-
-            if (password === '12345') {
-                if (confirm(`Opravdu smazat směnu "${name}" na den ${date}?`)) {
-                    fetch('?delete=1', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                        body: new URLSearchParams({
-                            name: name,
-                            shift_date: date,
-                            password: password
-                        })
-                    })
-                    .then(res => res.text())
-                    .then(text => {
-                        if (text === 'Smazáno') {
-                            alert('Směna byla smazána.');
-                            openModalForDate(date);
-                            calendar.refetchEvents();
-                        } else {
-                            alert('Chyba při mazání: ' + text);
-                        }
-                    })
-                    .catch(err => console.error('Chyba:', err));
+        document.addEventListener('DOMContentLoaded', () => {
+    
+            class ShiftPlannerApp {
+                constructor(rootElement, modalElement, appData) {
+                    this.appRoot = document.querySelector(rootElement);
+                    this.modal = document.querySelector(modalElement);
+                    this.employees = appData.employees;
+                    this.state = {
+                        shifts: [],
+                        currentDate: new Date(),
+                        isLoading: true,
+                    };
+                    this.todayISO = new Date().toISOString().split('T')[0];
+                    this.init();
                 }
-            } else if (password !== null) {
-                alert('Neplatné heslo!');
-            }
-        }
-    });
 
-    addShiftForm.addEventListener('submit', function (e) {
-        e.preventDefault();
-        const name = selectName.value;
-        const shift_date = inputDate.value;
-        const note = inputNote.value;
-        const color = employeeColors[name] || '#000000';
+                async init() {
+                    this.renderLayout();
+                    this.cacheDomElements();
+                    this.populateEmployeeSelect();
+                    this.addEventListeners();
+                    
+                    await this.fetchShifts();
+                    this.state.isLoading = false;
+                    this.renderCalendar();
+                }
 
-        fetch('', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: new URLSearchParams({
-                name: name,
-                shift_date: shift_date,
-                note: note,
-                color: color
-            })
-        })
-        .then(res => res.text())
-        .then(text => {
-            if (text === 'OK') {
-                alert('Směna přidána!');
-                inputNote.value = '';
-                selectName.value = '';
-                openModalForDate(shift_date);
-                calendar.refetchEvents();
-            } else {
-                alert('Chyba: ' + text);
+                renderLayout() {
+                    this.appRoot.innerHTML = `
+                        <header class="bg-white shadow-sm p-4 flex justify-between items-center print:hidden">
+                            <h1 class="text-xl font-bold text-blue-600">Plánovač Směn</h1>
+                            </header>
+                        <main class="main-container">
+                            <div id="notification-area" class="hidden"></div>
+                            <div class="max-w-7xl mx-auto bg-white p-4 sm:p-6 rounded-2xl shadow-lg">
+                                <div class="flex items-center justify-between mb-4 print:hidden">
+                                    <button id="prev-month" class="p-2 rounded-full hover:bg-gray-100 transition-colors">
+                                        <svg class="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+                                    </button>
+                                    <h2 id="month-year" class="text-xl md:text-2xl font-bold text-gray-700 w-48 text-center"></h2>
+                                    <button id="next-month" class="p-2 rounded-full hover:bg-gray-100 transition-colors">
+                                        <svg class="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                                    </button>
+                                </div>
+                                <div class="grid grid-cols-7 gap-1 text-center font-semibold text-sm text-gray-500 mb-2">
+                                    <div>Po</div><div>Út</div><div>St</div><div>Čt</div><div>Pá</div><div>So</div><div>Ne</div>
+                                </div>
+                                <div id="calendar-grid" class="grid grid-cols-7 gap-1"></div>
+                            </div>
+                        </main>
+                    `;
+                }
+                
+                cacheDomElements() {
+                    this.calendarGrid = this.appRoot.querySelector('#calendar-grid');
+                    this.monthYearEl = this.appRoot.querySelector('#month-year');
+                    this.prevMonthBtn = this.appRoot.querySelector('#prev-month');
+                    this.nextMonthBtn = this.appRoot.querySelector('#next-month');
+                    this.shiftForm = this.modal.querySelector('#shift-form');
+                    this.modalTitle = this.modal.querySelector('#modal-title');
+                    this.employeeSelect = this.modal.querySelector('#name');
+                    this.shiftDateInput = this.modal.querySelector('#shift_date');
+                    this.shiftIdInput = this.modal.querySelector('#shift-id');
+                    this.noteInput = this.modal.querySelector('#note');
+                    this.saveBtn = this.modal.querySelector('#save-btn');
+                    this.cancelBtn = this.modal.querySelector('#cancel-btn');
+                    this.deleteBtn = this.modal.querySelector('#delete-btn-in-modal');
+                    this.saveBtnText = this.saveBtn.querySelector('#save-btn-text');
+                    this.saveSpinner = this.saveBtn.querySelector('#save-spinner');
+                    this.deleteBtnText = this.deleteBtn.querySelector('#delete-btn-text');
+                    this.deleteSpinner = this.deleteBtn.querySelector('#delete-spinner');
+                    this.toast = document.getElementById('toast');
+                    this.toastMessage = document.getElementById('toast-message');
+                }
+
+                addEventListeners() {
+                    this.prevMonthBtn.addEventListener('click', () => this.changeMonth(-1));
+                    this.nextMonthBtn.addEventListener('click', () => this.changeMonth(1));
+                    
+                    this.calendarGrid.addEventListener('click', e => {
+                        const addBtn = e.target.closest('.add-shift-plus');
+                        const shiftItem = e.target.closest('.shift-item');
+                        if (addBtn) {
+                            e.stopPropagation();
+                            this.openAddModal(addBtn.dataset.date);
+                        } else if (shiftItem) {
+                            e.stopPropagation();
+                            this.openEditModal(shiftItem.dataset.id);
+                        }
+                    });
+
+                    this.shiftForm.addEventListener('submit', e => this.handleFormSubmit(e));
+                    this.cancelBtn.addEventListener('click', () => this.toggleModal(false));
+                    this.deleteBtn.addEventListener('click', () => this.handleDelete());
+                    this.modal.addEventListener('click', (e) => {
+                        if (e.target === this.modal) this.toggleModal(false);
+                    });
+                }
+                
+                async apiCall(method, body = null) {
+                    // Voláme vždy stejný soubor, ale s různými metodami a parametry
+                    let url = '<?php echo basename($_SERVER["PHP_SELF"]); ?>';
+                    const options = {
+                        method,
+                        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                    };
+                    
+                    if (method === 'GET') {
+                        // Přidáme parametr, aby PHP poznalo, že jde o API GET, ne o načtení stránky
+                        url += '?api=true';
+                    }
+
+                    if (body) {
+                        options.body = JSON.stringify(body);
+                    }
+                    
+                    try {
+                        const response = await fetch(url, options);
+                        const responseData = await response.json();
+                        if (!response.ok) {
+                            throw new Error(responseData.error || `HTTP chyba! Status: ${response.status}`);
+                        }
+                        return responseData;
+                    } catch (error) {
+                        console.error('API Chyba:', error);
+                        this.showToast(error.message, 'error');
+                        return null;
+                    }
+                }
+
+                async fetchShifts() {
+                    const data = await this.apiCall('GET');
+                    if (data) {
+                        this.state.shifts = data;
+                    }
+                }
+
+                renderCalendar() {
+                    this.calendarGrid.innerHTML = '';
+                    const { year, month } = { year: this.state.currentDate.getFullYear(), month: this.state.currentDate.getMonth() };
+                    this.monthYearEl.textContent = `${this.state.currentDate.toLocaleString('cs-CZ', { month: 'long' })} ${year}`;
+
+                    const firstDayOfMonth = new Date(year, month, 1).getDay();
+                    const daysInMonth = new Date(year, month + 1, 0).getDate();
+                    const dayOffset = (firstDayOfMonth === 0) ? 6 : firstDayOfMonth - 1;
+
+                    for (let i = 0; i < dayOffset; i++) {
+                        this.calendarGrid.insertAdjacentHTML('beforeend', `<div class="bg-gray-50 rounded-lg"></div>`);
+                    }
+
+                    for (let day = 1; day <= daysInMonth; day++) {
+                        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                        const isToday = this.todayISO === dateStr;
+                        const isPastDay = dateStr < this.todayISO;
+                        
+                        const dayShifts = this.state.shifts.filter(s => s.shift_date === dateStr);
+                        const shiftsHtml = dayShifts.map(shift => `
+                            <div data-id="${shift.id}" class="shift-item text-white text-xs font-semibold px-2 py-1 rounded-md mb-1" style="background-color: ${this.escapeHtml(shift.color)}; color: ${this.getContrastColor(shift.color)};" title="${this.escapeHtml(shift.name)}${shift.note ? ' - ' + this.escapeHtml(shift.note) : ''}">
+                                ${this.escapeHtml(shift.name)}
+                            </div>
+                        `).join('');
+
+                        const dayCellHtml = `
+                            <div class="calendar-day border border-gray-200 rounded-lg p-2 flex flex-col relative ${isToday ? 'bg-blue-50 border-blue-300' : 'bg-white'} ${isPastDay ? 'past-day' : ''}" data-date="${dateStr}">
+                                <div class="flex justify-between items-center mb-1">
+                                    <span class="font-bold text-sm ${isToday ? 'text-blue-600' : 'text-gray-700'}">${day}</span>
+                                    ${!isPastDay ? `
+                                        <button class="add-shift-plus text-blue-500 hover:text-blue-700 rounded-full w-6 h-6 flex items-center justify-center" data-date="${dateStr}" title="Přidat směnu">
+                                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
+                                        </button>`: ''}
+                                </div>
+                                <div class="shifts-container">${shiftsHtml}</div>
+                            </div>`;
+                        this.calendarGrid.insertAdjacentHTML('beforeend', dayCellHtml);
+                    }
+                }
+                
+                changeMonth(direction) {
+                    this.state.currentDate.setMonth(this.state.currentDate.getMonth() + direction);
+                    this.renderCalendar();
+                }
+                
+                populateEmployeeSelect() {
+                    this.employeeSelect.innerHTML = '<option value="" disabled selected>Vyberte zaměstnance...</option>';
+                    for (const department in this.employees) {
+                        const optgroup = document.createElement('optgroup');
+                        optgroup.label = department;
+                        this.employees[department].forEach(emp => {
+                            const option = document.createElement('option');
+                            option.value = emp.name;
+                            option.textContent = emp.name;
+                            optgroup.appendChild(option);
+                        });
+                        this.employeeSelect.appendChild(optgroup);
+                    }
+                }
+
+                toggleModal(show) {
+                    if (show) {
+                        this.modal.classList.remove('modal-hidden');
+                        this.modal.classList.add('modal-visible');
+                    } else {
+                        this.modal.classList.remove('modal-visible');
+                        this.modal.classList.add('modal-hidden');
+                    }
+                }
+
+                openAddModal(date) {
+                    this.shiftForm.reset();
+                    this.modalTitle.textContent = 'Přidat směnu';
+                    this.shiftIdInput.value = '';
+                    this.shiftDateInput.value = date;
+                    this.shiftDateInput.setAttribute('min', this.todayISO);
+                    this.employeeSelect.disabled = false;
+                    this.deleteBtn.classList.add('hidden');
+                    this.toggleLoading(this.saveBtn, false);
+                    this.toggleLoading(this.deleteBtn, false);
+                    this.toggleModal(true);
+                }
+
+                openEditModal(id) {
+                    const shift = this.state.shifts.find(s => s.id == id);
+                    if (!shift) return;
+                    this.shiftForm.reset();
+                    this.modalTitle.textContent = 'Upravit směnu';
+                    this.shiftIdInput.value = shift.id;
+                    this.shiftDateInput.value = shift.shift_date;
+                    this.shiftDateInput.setAttribute('min', this.todayISO);
+                    this.employeeSelect.value = shift.name;
+                    this.employeeSelect.disabled = true;
+                    this.noteInput.value = shift.note;
+                    this.deleteBtn.classList.remove('hidden');
+                    this.toggleLoading(this.saveBtn, false);
+                    this.toggleLoading(this.deleteBtn, false);
+                    this.toggleModal(true);
+                }
+
+                async handleFormSubmit(e) {
+                    e.preventDefault();
+                    const formData = new FormData(this.shiftForm);
+                    const data = Object.fromEntries(formData.entries());
+                    const id = data.id;
+
+                    this.toggleLoading(this.saveBtn, true, 'Ukládám...');
+                    let result;
+                    if (id) {
+                        result = await this.apiCall('PUT', data);
+                    } else {
+                        result = await this.apiCall('POST', data);
+                    }
+                    this.toggleLoading(this.saveBtn, false, 'Uložit');
+                    
+                    if (result) {
+                        this.showToast(result.message || 'Operace byla úspěšná.', 'success');
+                        this.toggleModal(false);
+                        await this.fetchShifts();
+                        this.renderCalendar();
+                    }
+                }
+                
+                async handleDelete() {
+                    const id = this.shiftIdInput.value;
+                    if (!id || !confirm('Opravdu si přejete smazat tuto směnu?')) return;
+                    
+                    this.toggleLoading(this.deleteBtn, true, 'Mažu...');
+                    const result = await this.apiCall('DELETE', { id });
+                    this.toggleLoading(this.deleteBtn, false, 'Smazat');
+
+                    if (result) {
+                        this.showToast(result.message || 'Směna byla smazána.', 'success');
+                        this.toggleModal(false);
+                        this.state.shifts = this.state.shifts.filter(s => s.id != id);
+                        this.renderCalendar();
+                    }
+                }
+                
+                toggleLoading(button, isLoading, loadingText = 'Ukládám...') {
+                    const textElement = button.querySelector('span');
+                    const spinnerElement = button.querySelector('.loading-spinner');
+                    button.disabled = isLoading;
+                    if (isLoading) {
+                        textElement.textContent = loadingText;
+                        spinnerElement.classList.remove('hidden');
+                    } else {
+                        textElement.textContent = button.id.includes('delete') ? 'Smazat' : 'Uložit';
+                        spinnerElement.classList.add('hidden');
+                    }
+                }
+
+                showToast(message, type = 'success') {
+                    this.toastMessage.textContent = message;
+                    this.toast.className = 'fixed top-5 right-5 text-white py-2 px-5 rounded-lg shadow-lg opacity-100 translate-y-0 transition-all duration-300 z-50';
+                    this.toast.classList.add(type === 'error' ? 'bg-red-600' : 'bg-green-600');
+
+                    setTimeout(() => {
+                        this.toast.classList.replace('opacity-100', 'opacity-0');
+                        this.toast.classList.replace('translate-y-0', '-translate-y-10');
+                    }, 3000);
+                }
+                
+                escapeHtml(unsafe) {
+                    if (unsafe === null || unsafe === undefined) return '';
+                    return unsafe.toString()
+                         .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+                         .replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+                }
+                
+                getContrastColor(hexcolor){
+                    if (hexcolor.startsWith('#')) {
+                        hexcolor = hexcolor.slice(1);
+                    }
+                    const r = parseInt(hexcolor.substr(0,2),16);
+                    const g = parseInt(hexcolor.substr(2,2),16);
+                    const b = parseInt(hexcolor.substr(4,2),16);
+                    const yiq = ((r*299)+(g*587)+(b*114))/1000;
+                    return (yiq >= 128) ? '#000000' : '#FFFFFF';
+                }
             }
-        })
-        .catch(err => {
-            console.error('Chyba:', err);
-            alert('Chyba při připojení k serveru.');
+            new ShiftPlannerApp('#app-root', '#shift-modal', AppData);
         });
-    });
-});
-</script>
+    </script>
 </body>
 </html>
