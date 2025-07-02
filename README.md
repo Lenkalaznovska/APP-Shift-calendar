@@ -1,81 +1,75 @@
-# 🗓️ Employee Shift Planner
+# 🗓️ Employee Shift Planner (v2)
 
-A sample project from my portfolio – a simple web application for clear and efficient planning of employee shifts in a restaurant.
+A modern single-page web application (SPA) for efficient employee shift management.  
+Built using **Vue.js 3**, **Tailwind CSS**, and a **PHP + MySQL/MariaDB** backend.
 
-👉 [View the live project](http://smeny.wz.cz:8080)
+👉 [Live Demo](http://smeny.wz.cz:8080)
 
 ---
 
-## 🧾 Project Description
+## ✨ Key Features
 
-The Shift Planner is a practical web application intended for internal use in a restaurant or bistro.  
-It allows for easy scheduling of employee shifts. Employees are visually distinguished by color and grouped for better orientation.  
-The application is localized in Czech and accessible from mobile devices.
-
-![image](https://github.com/user-attachments/assets/f1030afa-04d5-49df-b32b-ac2797e79c34)
-
-![image](https://github.com/user-attachments/assets/ed2ea27d-45ce-4fb5-b9fb-ba21b91fed42)
+- ⚡ **Single Page Application (SPA)** – seamless interface, no full page reloads
+- 📅 **Interactive Calendar** – intuitive shift scheduling, editing, and deletion
+- 📊 **Dashboard Overview** – monthly statistics, total hours, shift count, employee workload
+- 🧠 **Filtering & Export** – filter by employee, print or export to PDF/XLS
+- 🔄 **Full CRUD** – create, read, update, and delete shifts
+- 🌗 **Dark/Light Mode** – theme preference saved automatically in the browser
+- 📱 **Fully Responsive Design** – optimized for desktop, tablets, and mobile phones
 
 ---
 
 ## 🛠️ Technologies Used
 
-### 💻 Frontend
+### 🖥️ Frontend
 
-- **HTML5** – page structure  
-- **CSS3** – styling and layout  
-- **JavaScript** – interactive features (e.g. calendar handling, AJAX)  
-- **FullCalendar.js** – interactive calendar for displaying and managing shifts
+- **Vue.js 3** – Composition API, reactive components
+- **Tailwind CSS** – utility-first CSS framework
+- **JavaScript (ES6+) & Fetch API** – asynchronous communication and logic
 
 ### 🔙 Backend
 
-- **PHP (procedural)** – request processing and database interaction  
-- **MySQL** – storing shift data
-
-### 🧰 Development Tools
-
-- **AJAX (fetch API)** – dynamic communication between frontend and backend  
-- **XAMPP** – local development environment with Apache, MySQL, and PHP  
-- **Apache** – web server for running PHP applications
+- **PHP 8+** – REST API written in OOP (classes: `Database`, `ApiController`)
+- **MySQL / MariaDB** – relational database, using PDO for secure communication
 
 ---
 
-## ✨ Application Features
+## 🚀 Installation & Setup
 
-- ✅ View shifts in daily, weekly, or monthly format  
-- ✅ Add a new shift (select employee, date, and note)  
-- ✅ Color-coded employees for clarity  
-- ✅ View shift details in a modal window by clicking a day  
-- ✅ Delete shift protected by a simple password  
-- ✅ Prevent duplicate entries – cannot assign the same shift twice to the same person  
-- ✅ Fully localized into Czech  
-- ✅ Intuitive and user-friendly interface, even for non-technical users
+1. **Upload to Server**  
+   Upload project files (e.g. `index.php`, `assets/`, `components/`, `api/`) to your web server or local host.
 
----
+2. **Create Database**  
+   In MySQL/MariaDB, create a new database with `utf8mb4` encoding.
 
-## 🔒 Password Note
+3. **Configure PHP Connection**  
+   Open `index.php` and update your database credentials:
 
-Deleting a shift is protected by a simple password `12345` – for demonstration purposes only.
+   ---
 
----
+CREATE TABLE `departments` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `name` VARCHAR(100) NOT NULL UNIQUE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-## 📱 Responsiveness & Accessibility
+CREATE TABLE `employees` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `name` VARCHAR(100) NOT NULL,
+  `department_id` INT NOT NULL,
+  `color` VARCHAR(7) NOT NULL DEFAULT '#3b82f6',
+  `is_active` BOOLEAN NOT NULL DEFAULT TRUE,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (`department_id`) REFERENCES `departments`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-The application is optimized for:
+CREATE TABLE `shifts` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `employee_id` INT NOT NULL,
+  `start_time` DATETIME NOT NULL,
+  `end_time` DATETIME NOT NULL,
+  `note` TEXT,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  `deleted_at` TIMESTAMP NULL DEFAULT NULL,
+  FOREIGN KEY (`employee_id`) REFERENCES `employees`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-- 🖥️ Desktop and laptop computers  
-- 📱 Mobile devices (phones and tablets)
-
----
-
-## 🛢️ Database Table
-
-```sql
-CREATE TABLE shifts (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  name VARCHAR(255) NOT NULL,
-  shift_date DATE NOT NULL,
-  note TEXT,
-  color VARCHAR(7),
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
