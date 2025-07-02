@@ -5,7 +5,7 @@ ob_start(); // Start output buffering
 const DB_HOST = "";
 const DB_NAME = "";
 const DB_USER = "";
-const DB_PASS = "._";
+const DB_PASS = "";
 const DB_CHARSET = "utf8mb4";
 const APP_TITLE = "Plánovač Směn";
 
@@ -412,9 +412,11 @@ if (isset($_GET['setup'])) { setupDatabase(Database::getInstance()); exit; }
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4"><div><label class="block text-sm font-medium text-[var(--muted-text)] mb-1">Od</label><input type="time" v-model="shiftForm.start_time" required class="form-input"></div><div><label class="block text-sm font-medium text-[var(--muted-text)] mb-1">Do</label><input type="time" v-model="shiftForm.end_time" required class="form-input"></div></div>
                         <div><label class="block text-sm font-medium text-[var(--muted-text)] mb-1">Poznámka</label><textarea v-model="shiftForm.note" rows="3" class="form-input"></textarea></div>
                     </form>
-                    <div class="p-4 sm:p-5 mt-auto flex flex-col-reverse sm:flex-row sm:justify-between items-center gap-3 border-t border-[var(--border-color)] bg-[var(--main-bg)] rounded-b-xl flex-shrink-0">
-                        <button type="button" v-if="modal.isEdit" @click="handleDelete" class="w-full sm:w-auto px-4 py-2.5 rounded-lg font-semibold text-white bg-[var(--danger-color)] hover:bg-[var(--danger-color-hover)] transition-colors">Smazat</button>
-                        <div class="flex flex-col sm:flex-row justify-end gap-3 w-full sm:w-auto"><button type="button" @click="closeModal" class="w-full sm:w-auto px-4 py-2.5 rounded-lg font-semibold bg-gray-200 hover:bg-gray-300 dark:bg-slate-600 dark:hover:bg-slate-500 transition-colors">Zrušit</button><button type="submit" @click="handleFormSubmit" class="w-full sm:w-auto px-4 py-2.5 rounded-lg font-semibold text-white bg-[var(--accent-color)] hover:bg-[var(--accent-color-hover)] transition-colors">Uložit</button></div>
+                    <div class="p-4 sm:p-5 mt-auto flex flex-col-reverse sm:flex-row sm:justify-end items-center gap-3 border-t border-[var(--border-color)] bg-[var(--main-bg)] rounded-b-xl flex-shrink-0">
+                        <div class="flex flex-col sm:flex-row justify-end gap-3 w-full sm:w-auto">
+                            <button type="button" @click="closeModal" class="w-full sm:w-auto px-4 py-2.5 rounded-lg font-semibold bg-gray-200 hover:bg-gray-300 dark:bg-slate-600 dark:hover:bg-slate-500 transition-colors">Zrušit</button>
+                            <button type="submit" @click="handleFormSubmit" class="w-full sm:w-auto px-4 py-2.5 rounded-lg font-semibold text-white bg-[var(--accent-color)] hover:bg-[var(--accent-color-hover)] transition-colors">Uložit</button>
+                        </div>
                     </div>
                 </template>
                 <template v-else-if="modal.type === 'day-detail'">
@@ -426,7 +428,28 @@ if (isset($_GET['setup'])) { setupDatabase(Database::getInstance()); exit; }
                         <button @click="closeModal" class="p-1 rounded-full hover:bg-black/10 dark:hover:bg-white/10 text-[var(--muted-text)]" aria-label="Zavřít"><svg class="w-6 h-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg></button>
                     </div>
                     <div class="flex-grow overflow-y-auto p-4 sm:p-5 space-y-3 overscroll-contain">
-                        <div v-if="modal.shifts.length > 0" v-for="shift in modal.shifts" @click="openEditModal(shift.id)" class="cursor-pointer font-semibold p-3 rounded-lg flex items-center gap-4 transition-transform hover:scale-[1.02]" :style="{backgroundColor:shift.color, color:getContrastColor(shift.color)}"><div class="font-bold text-base">{{formatTime(shift.start_time)}} - {{formatTime(shift.end_time)}}</div><div class="text-lg">{{shift.name}}</div><div class="ml-auto text-sm opacity-80" v-if="shift.note">{{shift.note}}</div></div>
+                        <div v-if="modal.shifts.length > 0" v-for="shift in modal.shifts" :key="shift.id" class="font-semibold p-3 rounded-lg flex items-center gap-4" :style="{backgroundColor:shift.color, color:getContrastColor(shift.color)}">
+                            <div class="flex-grow">
+                                <div class="flex items-center gap-3">
+                                    <span class="font-bold text-base">{{formatTime(shift.start_time)}} - {{formatTime(shift.end_time)}}</span>
+                                    <span class="text-lg">{{shift.name}}</span>
+                                </div>
+                                <div class="text-sm opacity-80 mt-1" v-if="shift.note">{{shift.note}}</div>
+                            </div>
+                            <div class="flex items-center gap-1 flex-shrink-0">
+                                <button @click.stop="openEditModal(shift.id)" class="p-2 rounded-full hover:bg-black/20 transition-colors" title="Upravit směnu">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                        <path d="M17.414 2.586a2 2 0 00-2.828 0L7 10.172V13h2.828l7.586-7.586a2 2 0 000-2.828z" />
+                                        <path fill-rule="evenodd" d="M2 6a2 2 0 012-2h4a1 1 0 010 2H4v10h10v-4a1 1 0 112 0v4a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" clip-rule="evenodd" />
+                                    </svg>
+                                </button>
+                                <button @click.stop="handleDeleteFromDetail(shift)" class="p-2 rounded-full hover:bg-black/20 transition-colors" title="Smazat směnu">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                        <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clip-rule="evenodd" />
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
                         <div v-else class="text-center text-lg text-[var(--muted-text)] py-10">Pro tento den nejsou naplánovány žádné směny.</div>
                     </div>
                 </template>
@@ -494,12 +517,15 @@ createApp({
             }
 
             // --- USER ACTIONS ---
-            async function handleDelete() {
-                if (!confirm('Opravdu si přejete smazat tuto směnu? Zaměstnanci se přičte bod za smazanou směnu.')) return;
-                const result = await apiRequest('delete_shift', 'POST', { id: shiftForm.id });
+            async function handleDeleteFromDetail(shiftToDelete) {
+                if (!confirm(`Opravdu si přejete smazat směnu pro ${shiftToDelete.name}? Zaměstnanci se přičte bod za smazanou směnu.`)) return;
+                const result = await apiRequest('delete_shift', 'POST', { id: shiftToDelete.id });
                 if (result) {
                     showToast(result.message, 'success');
-                    closeModal();
+                    const index = modal.shifts.findIndex(s => s.id === shiftToDelete.id);
+                    if (index > -1) {
+                        modal.shifts.splice(index, 1);
+                    }
                     await fetchData();
                 }
             }
@@ -544,7 +570,7 @@ createApp({
                 fetchData(); 
             });
 
-            return { state, modal, shiftForm, toast, monthYear, calendar, isToday, isPast, isDarkMode, groupedEmployees, activeFilter, mobileMenuOpen, calendarShiftLimit, changeMonth, openAddModal, openEditModal, openDayDetailModal, closeModal, handleFormSubmit, handleDelete, getShiftsForDay, getDateString, showToast, toggleDarkMode, getContrastColor, getShiftTitle, formatTime, exportToXLS, exportToPDF, describeArc, getDayName, addNewShiftFromDetail, setView };
+            return { state, modal, shiftForm, toast, monthYear, calendar, isToday, isPast, isDarkMode, groupedEmployees, activeFilter, mobileMenuOpen, calendarShiftLimit, changeMonth, openAddModal, openEditModal, openDayDetailModal, closeModal, handleFormSubmit, handleDeleteFromDetail, getShiftsForDay, getDateString, showToast, toggleDarkMode, getContrastColor, getShiftTitle, formatTime, exportToXLS, exportToPDF, describeArc, getDayName, addNewShiftFromDetail, setView };
 
         } catch (e) {
             console.error("Chyba při inicializaci Vue aplikace:", e);
