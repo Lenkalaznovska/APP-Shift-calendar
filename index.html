@@ -207,6 +207,11 @@ if (isset($_GET['setup'])) { setupDatabase(Database::getInstance()); exit; }
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= htmlspecialchars(APP_TITLE) ?></title>
+    
+    <link rel="icon" type="image/webp" href="favicon.webp">
+    <link rel="apple-touch-icon" href="favicon.webp">
+    <link rel="shortcut icon" href="favicon.webp">
+    
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -480,7 +485,7 @@ createApp({
             });
             const todayISO = new Date().toISOString().split('T')[0];
             const modal = reactive({ type: null, isEdit: false, shifts: [], dayTitle: '', dayDate: null });
-            const shiftForm = reactive({ id: null, employee_id: '', date: '', start_time: '11:00', end_time: '21:15', note: '' });
+            const shiftForm = reactive({ id: null, employee_id: '', date: '', start_time: '09:15', end_time: '21:15', note: '' });
             const toast = reactive({ visible: false, message: '', type: 'success', timeoutId: null });
             const isDarkMode = ref(localStorage.getItem('theme') === 'dark');
             const mobileMenuOpen = ref(false);
@@ -547,7 +552,7 @@ createApp({
             function setView(newView) { if (state.view === newView) return; state.view = newView; const url = new URL(window.location); url.searchParams.set('view', newView); window.history.pushState({}, '', url); fetchData(); }
             async function changeMonth(dir) { state.currentDate = new Date(state.currentDate.setMonth(state.currentDate.getMonth() + dir, 1)); await fetchData(); }
             function closeModal() { modal.type = null; }
-            function openAddModal(date) { Object.assign(shiftForm, { id: null, employee_id: '', date, start_time: '11:00', end_time: '21:15', note: '' }); modal.isEdit = false; modal.type = 'edit-add'; }
+            function openAddModal(date) { Object.assign(shiftForm, { id: null, employee_id: '', date, start_time: '09:15', end_time: '21:15', note: '' }); modal.isEdit = false; modal.type = 'edit-add'; }
             function openEditModal(id) { const shift = state.shifts.find(s => s.id == id); if (!shift) return; Object.assign(shiftForm, { id: shift.id, employee_id: shift.employee_id, date: shift.start_time.split(' ')[0], start_time: shift.start_time.split(' ')[1].substring(0, 5), end_time: shift.end_time.split(' ')[1].substring(0, 5), note: shift.note }); modal.isEdit = true; modal.type = 'edit-add'; }
             function openDayDetailModal(dateStr) { const day = parseInt(dateStr.split('-')[2], 10); modal.shifts = getShiftsForDay(day); modal.dayTitle = `${day}. ${state.currentDate.toLocaleString('cs-CZ', { month: 'long' })}`; modal.dayDate = dateStr; modal.type = 'day-detail'; }
             function addNewShiftFromDetail() { openAddModal(modal.dayDate); }
