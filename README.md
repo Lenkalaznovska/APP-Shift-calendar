@@ -18,7 +18,7 @@ Built using **Vue.js 3**, **Tailwind CSS**, and a **PHP + MySQL/MariaDB** backen
 - 📅 **Interactive Calendar** – intuitive shift scheduling, editing, and deletion
 - 📊 **Dashboard Overview** – monthly statistics, total hours, shift count, employee workload
 - 🧠 **Filtering & Export** – filter by employee, print or export to PDF/XLS
-- 🔄 **Full CRUD** – create, read, update, and delete shifts
+- 🔄 **Full CRUD** – create, read, update, and soft-delete shifts
 - 🌗 **Dark/Light Mode** – theme preference saved automatically in the browser
 - 📱 **Fully Responsive Design** – optimized for desktop, tablets, and mobile phones
 
