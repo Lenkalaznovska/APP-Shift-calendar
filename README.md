@@ -8,7 +8,7 @@ Built using **Vue.js 3**, **Tailwind CSS**, and a **PHP + MySQL/MariaDB** backen
 ![image](https://github.com/user-attachments/assets/2faa502b-dcff-4e69-be92-016f771a3574)
 ![image](https://github.com/user-attachments/assets/f6bc7bc9-994c-4246-90c8-0f4d5dd858ad)
 ![image](https://github.com/user-attachments/assets/41732f91-e06a-4b4e-ad67-aac8282b58ca)
-![image](https://github.com/user-attachments/assets/002f4072-e3b0-41a8-b0ac-91cb4c2d1eed)
+![image](https://github.com/user-attachments/assets/38afca46-1d0e-44d1-b7bb-dd296f611642)
 
 ---
 
