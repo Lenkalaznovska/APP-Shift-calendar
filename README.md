@@ -42,7 +42,7 @@ Built using **Vue.js 3**, **Tailwind CSS**, and a **PHP + MySQL/MariaDB** backen
 ## 🚀 Installation & Setup
 
 1. **Upload to Server**  
-   Upload project files (e.g. `index.php`, `assets/`, `components/`, `api/`) to your web server or local host.
+   Upload project files (e.g. `index.php`) to your web server or local host.
 
 2. **Create Database**  
    In MySQL/MariaDB, create a new database with `utf8mb4` encoding.
