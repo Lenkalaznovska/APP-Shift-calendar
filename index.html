@@ -5,7 +5,7 @@ ob_start(); // Start output buffering
 const DB_HOST = "";
 const DB_NAME = "";
 const DB_USER = "";
-const DB_PASS = "";
+const DB_PASS = "._";
 const DB_CHARSET = "utf8mb4";
 const APP_TITLE = "Plánovač Směn";
 
@@ -234,17 +234,23 @@ if (isset($_GET['setup'])) { setupDatabase(Database::getInstance()); exit; }
             --accent-color-hover: #818CF8;
         }
         
+        /* Zásadní oprava: Zabraňuje horizontálnímu posuvníku na celé stránce */
+        html, body {
+            width: 100%;
+            overflow-x: hidden;
+        }
+        
         body { 
             font-family: 'Inter', sans-serif; 
             background-color: var(--main-bg); 
             color: var(--text-color);
             -webkit-font-smoothing: antialiased; 
             -moz-osx-font-smoothing: grayscale;
-            overflow-x: hidden;
         }
 
         [v-cloak] { display: none; }
 
+        /* Přechody pro Vue */
         .fade-enter-active, .fade-leave-active { transition: opacity 0.3s ease; }
         .fade-enter-from, .fade-leave-to { opacity: 0; }
         .modal-bg-enter-active, .modal-bg-leave-active { transition: opacity 0.3s ease; }
@@ -254,16 +260,17 @@ if (isset($_GET['setup'])) { setupDatabase(Database::getInstance()); exit; }
         .card-enter-active { transition: all 0.5s cubic-bezier(0.25, 0.8, 0.25, 1); }
         .card-enter-from { opacity: 0; transform: translateY(30px); }
         .card-move { transition: transform 0.5s ease; }
+        
         .progress-circle { transform: rotate(-90deg); }
 
         .theme-toggle-icon .sun, .theme-toggle-icon .moon { transition: transform 0.5s ease, opacity 0.3s ease; }
         html.dark .theme-toggle-icon .sun { transform: scale(1.5) rotate(90deg); opacity: 0; }
         html:not(.dark) .theme-toggle-icon .moon { transform: scale(0.5) rotate(-90deg); opacity: 0; }
 
-        /* Vylepšený styl pro karty */
+        /* Vylepšený styl pro karty a formuláře */
         .dashboard-card {
             background-color: var(--secondary-bg);
-            border-radius: 0.75rem; /* 12px */
+            border-radius: 0.75rem;
             border: 1px solid var(--border-color);
             box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05), 0 2px 4px -2px rgb(0 0 0 / 0.05);
             transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
@@ -273,12 +280,11 @@ if (isset($_GET['setup'])) { setupDatabase(Database::getInstance()); exit; }
             box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
         }
 
-        /* Lepší styly pro formulářové prvky */
         .form-input {
             background-color: var(--main-bg);
             border: 1px solid var(--border-color);
-            border-radius: 0.5rem; /* 8px */
-            padding: 0.75rem 1rem; /* 12px 16px */
+            border-radius: 0.5rem;
+            padding: 0.75rem 1rem;
             width: 100%;
             transition: border-color 0.2s, box-shadow 0.2s;
             color: var(--text-color);
@@ -288,7 +294,6 @@ if (isset($_GET['setup'])) { setupDatabase(Database::getInstance()); exit; }
             border-color: var(--accent-color);
             box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-color) 20%, transparent);
         }
-        /* Korekce pro date/time input a select v dark módu */
         html.dark .form-input {
            color-scheme: dark;
         }
@@ -297,10 +302,10 @@ if (isset($_GET['setup'])) { setupDatabase(Database::getInstance()); exit; }
 <body class="min-h-screen">
 <div id="app" class="h-screen flex flex-col" v-cloak>
     <header class="bg-[var(--secondary-bg)]/80 backdrop-blur-sm border-b border-[var(--border-color)] flex-shrink-0 z-20 sticky top-0">
-        <div class="w-full max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="w-full max-w-screen-2xl mx-auto px-4 lg:px-8">
             <div class="flex items-center justify-between h-16">
                 <div class="flex items-center gap-4">
-                    <div class="flex-shrink-0"><h1 class="text-xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-[var(--accent-color)] to-blue-400">Profi Plánovač</h1></div>
+                    <div class="flex-shrink-0"><h1 class="text-xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-[var(--accent-color)] to-blue-400">Plánovač směn</h1></div>
                     <nav class="hidden md:block">
                         <div class="ml-10 flex items-baseline space-x-1">
                             <a @click.prevent="setView('calendar')" href="#" class="px-3 py-2 rounded-md text-sm font-semibold transition-colors duration-200" :class="state.view==='calendar' ? 'bg-[var(--accent-color)]/10 text-[var(--accent-color)]' : 'text-[var(--muted-text)] hover:bg-black/5 dark:hover:bg-white/5 hover:text-[var(--text-color)]'">Kalendář</a>
@@ -318,35 +323,37 @@ if (isset($_GET['setup'])) { setupDatabase(Database::getInstance()); exit; }
     </header>
 
     <main class="flex-grow w-full overflow-y-auto">
-        <div class="w-full max-w-screen-2xl mx-auto py-6">
-            <div class="flex flex-col md:flex-row items-center justify-between mb-6 gap-4 px-4 sm:px-6 lg:px-8">
-                <div class="flex items-center bg-[var(--secondary-bg)] p-1 rounded-full shadow-sm border border-[var(--border-color)] flex-shrink-0"><button @click="changeMonth(-1)" class="p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/5 text-[var(--muted-text)] hover:text-[var(--text-color)] transition-colors" aria-label="Předchozí měsíc"><svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" /></svg></button><h2 class="text-lg sm:text-xl font-bold w-40 sm:w-48 text-center capitalize">{{ monthYear }}</h2><button @click="changeMonth(1)" class="p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/5 text-[var(--muted-text)] hover:text-[var(--text-color)] transition-colors" aria-label="Následující měsíc"><svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" /></svg></button></div>
-                <div class="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
-                    <select v-if="state.employees.length>0" v-model="activeFilter.employeeId" class="form-input !py-2.5 w-full md:w-auto flex-grow"><option value="all">Všichni zaměstnanci</option><template v-for="(group,department) in groupedEmployees"><optgroup :label="department"><option v-for="emp in group" :key="emp.id" :value="emp.id">{{emp.name}}</option></optgroup></template></select>
-                    <div v-if="state.view==='calendar'" class="flex gap-2 w-full md:w-auto">
-                        <button @click="exportToXLS" class="w-full md:w-auto bg-green-100 hover:bg-green-200 text-green-800 dark:bg-green-800/50 dark:hover:bg-green-800/80 dark:text-green-100 font-bold py-2 px-3 text-sm rounded-lg transition-colors flex items-center justify-center gap-2">XLS</button>
-                        <button @click="exportToPDF" class="w-full md:w-auto bg-red-100 hover:bg-red-200 text-red-800 dark:bg-red-800/50 dark:hover:bg-red-800/80 dark:text-red-100 font-bold py-2 px-3 text-sm rounded-lg transition-colors flex items-center justify-center gap-2">PDF</button>
+        <div class="w-full max-w-screen-2xl mx-auto py-6 md:px-6 lg:px-8">
+            <div class="w-[90%] md:w-full mx-auto">
+                <div class="flex flex-col md:flex-row items-center justify-between mb-6 gap-4">
+                    <div class="flex items-center bg-[var(--secondary-bg)] p-1 rounded-full shadow-sm border border-[var(--border-color)] flex-shrink-0"><button @click="changeMonth(-1)" class="p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/5 text-[var(--muted-text)] hover:text-[var(--text-color)] transition-colors" aria-label="Předchozí měsíc"><svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" /></svg></button><h2 class="text-lg sm:text-xl font-bold w-40 sm:w-48 text-center capitalize">{{ monthYear }}</h2><button @click="changeMonth(1)" class="p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/5 text-[var(--muted-text)] hover:text-[var(--text-color)] transition-colors" aria-label="Následující měsíc"><svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" /></svg></button></div>
+                    <div class="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
+                        <select v-if="state.employees.length>0" v-model="activeFilter.employeeId" class="form-input !py-2.5 w-full md:w-auto flex-grow"><option value="all">Všichni zaměstnanci</option><template v-for="(group,department) in groupedEmployees"><optgroup :label="department"><option v-for="emp in group" :key="emp.id" :value="emp.id">{{emp.name}}</option></optgroup></template></select>
+                        <div v-if="state.view==='calendar'" class="flex gap-2 w-full md:w-auto">
+                            <button @click="exportToXLS" class="w-full md:w-auto bg-green-100 hover:bg-green-200 text-green-800 dark:bg-green-800/50 dark:hover:bg-green-800/80 dark:text-green-100 font-bold py-2 px-3 text-sm rounded-lg transition-colors flex items-center justify-center gap-2">XLS</button>
+                            <button @click="exportToPDF" class="w-full md:w-auto bg-red-100 hover:bg-red-200 text-red-800 dark:bg-red-800/50 dark:hover:bg-red-800/80 dark:text-red-100 font-bold py-2 px-3 text-sm rounded-lg transition-colors flex items-center justify-center gap-2">PDF</button>
+                        </div>
                     </div>
                 </div>
             </div>
             
-            <div class="w-full">
+            <div class="w-[90%] md:w-full mx-auto">
                 <transition name="fade" mode="out-in">
                     <div v-if="state.isLoading" class="flex-grow flex items-center justify-center h-full text-[var(--muted-text)] py-20"><svg class="animate-spin -ml-1 mr-3 h-8 w-8" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>Načítání dat...</div>
                     <div v-else-if="state.view==='calendar'" key="calendar">
-                        <div class="hidden md:grid grid-cols-7 gap-1 text-center font-semibold text-[var(--muted-text)] mb-2 px-4 sm:px-6 lg:px-8 text-xs uppercase tracking-wider"><div>Po</div><div>Út</div><div>St</div><div>Čt</div><div>Pá</div><div>So</div><div>Ne</div></div>
-                        <div class="hidden md:grid grid-cols-7 grid-rows-5 gap-2 px-4 sm:px-6 lg:px-8">
+                        <div class="hidden md:grid grid-cols-7 gap-1 text-center font-semibold text-[var(--muted-text)] mb-2 text-xs uppercase tracking-wider"><div>Po</div><div>Út</div><div>St</div><div>Čt</div><div>Pá</div><div>So</div><div>Ne</div></div>
+                        <div class="hidden md:grid grid-cols-7 auto-rows-fr gap-2">
                             <div v-for="n in calendar.dayOffset" class="rounded-lg bg-black/5 dark:bg-white/5"></div>
-                            <div v-for="day in calendar.daysInMonth" :class="['relative border border-transparent hover:border-[var(--accent-color)]/50 rounded-lg p-2 flex flex-col transition-all duration-200 group cursor-pointer min-h-[120px]', {'bg-[var(--secondary-bg)]': !isPast(day)}, {'bg-slate-100 dark:bg-slate-800/50 opacity-60': isPast(day)}, {'!border-[var(--accent-color)] border-2': isToday(day)}]" @click="openDayDetailModal(getDateString(day))">
+                            <div v-for="day in calendar.daysInMonth" :class="['relative border border-transparent hover:border-[var(--accent-color)]/50 rounded-lg p-2 flex flex-col transition-all duration-200 group cursor-pointer min-h-[140px]', {'bg-[var(--secondary-bg)]': !isPast(day)}, {'bg-slate-100 dark:bg-slate-800/50 opacity-60': isPast(day)}, {'!border-[var(--accent-color)] border-2': isToday(day)}]" @click="openDayDetailModal(getDateString(day))">
                                 <div class="flex justify-between items-center mb-1"><span class="font-bold" :class="{'text-[var(--accent-color)]': isToday(day)}">{{day}}</span></div>
                                 <button v-if="!isPast(day)" @click.stop="openAddModal(getDateString(day))" class="absolute top-1 right-1 text-[var(--accent-color)] bg-[var(--accent-color)]/10 hover:bg-[var(--accent-color)]/20 rounded-full w-7 h-7 flex items-center justify-center transition opacity-0 group-hover:opacity-100 focus:opacity-100" title="Přidat směnu"><svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" /></svg></button>
                                 <div class="flex-grow space-y-1 overflow-hidden">
-                                    <div v-for="(shift, index) in getShiftsForDay(day)" v-show="index < calendarShiftLimit" class="text-xs font-semibold px-2 py-1 rounded-md" :style="{backgroundColor:shift.color,color:getContrastColor(shift.color)}" :title="getShiftTitle(shift)"><span class="font-bold">{{formatTime(shift.start_time)}}</span> {{shift.name}}</div>
+                                    <div v-for="(shift, index) in getShiftsForDay(day)" v-show="index < calendarShiftLimit" class="text-xs font-semibold px-2 py-1 rounded-md truncate" :style="{backgroundColor:shift.color,color:getContrastColor(shift.color)}" :title="getShiftTitle(shift)"><span class="font-bold">{{formatTime(shift.start_time)}}</span> {{shift.name}}</div>
                                     <div v-if="getShiftsForDay(day).length > calendarShiftLimit" class="text-xs font-semibold text-[var(--muted-text)] text-center py-1">+ {{ getShiftsForDay(day).length - calendarShiftLimit }} další...</div>
                                 </div>
                             </div>
                         </div>
-                        <div class="block md:hidden space-y-3 px-2 sm:px-4">
+                        <div class="block md:hidden space-y-3">
                             <div v-for="day in calendar.daysInMonth" :key="day" @click="openDayDetailModal(getDateString(day))" class="bg-[var(--secondary-bg)] rounded-xl p-4 shadow-sm border cursor-pointer active:scale-[0.98] transition-transform" :class="[isToday(day) ? 'border-[var(--accent-color)]' : 'border-[var(--border-color)]', isPast(day) ? 'opacity-60' : '']">
                                 <div class="flex justify-between items-center mb-3"><div class="flex items-center gap-3"><span class="font-extrabold text-lg w-8 h-8 flex items-center justify-center rounded-full" :class="{'bg-[var(--accent-color)] text-white': isToday(day)}">{{day}}</span><span class="font-semibold text-sm text-[var(--muted-text)] capitalize">{{ getDayName(day) }}</span></div><button v-if="!isPast(day)" @click.stop="openAddModal(getDateString(day))" class="text-[var(--accent-color)] bg-[var(--accent-color)]/10 rounded-full w-8 h-8 flex items-center justify-center transition" title="Přidat směnu"><svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" /></svg></button></div>
                                 <div class="space-y-2">
@@ -356,7 +363,7 @@ if (isset($_GET['setup'])) { setupDatabase(Database::getInstance()); exit; }
                             </div>
                         </div>
                     </div>
-                    <div v-else-if="state.view==='dashboard'" key="dashboard" class="px-4 sm:px-6 lg:px-8">
+                    <div v-else-if="state.view==='dashboard'" key="dashboard">
                         <div v-if="state.dashboardSummary" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 mb-8">
                             <div class="dashboard-card p-6 text-center"><p class="text-sm font-medium text-[var(--muted-text)] uppercase tracking-wider">Směn v měsíci</p><p class="text-5xl font-extrabold mt-2 text-transparent bg-clip-text bg-gradient-to-br from-indigo-500 to-sky-400">{{state.dashboardSummary.total_shifts}}</p></div>
                             <div class="dashboard-card p-6 text-center"><p class="text-sm font-medium text-[var(--muted-text)] uppercase tracking-wider">Hodin v měsíci</p><p class="text-5xl font-extrabold mt-2 text-transparent bg-clip-text bg-gradient-to-br from-lime-500 to-teal-400">{{ state.dashboardSummary.total_hours.toFixed(1) }}</p></div>
@@ -388,14 +395,14 @@ if (isset($_GET['setup'])) { setupDatabase(Database::getInstance()); exit; }
         </div>
     </main>
     
-    <transition name="modal-bg-enter-active">
+    <transition name="modal-bg">
         <div v-if="modal.type" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-40" @click="closeModal"></div>
     </transition>
     <transition name="modal-panel">
-        <div v-if="modal.type" class="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div @click.stop class="bg-[var(--secondary-bg)] w-full flex flex-col pointer-events-auto rounded-xl shadow-2xl max-h-[90vh]" :class="modal.type === 'edit-add' ? 'max-w-md' : 'max-w-lg'">
+        <div v-if="modal.type" class="fixed inset-0 z-50 flex items-center justify-center">
+            <div @click.stop class="bg-[var(--secondary-bg)] flex flex-col pointer-events-auto rounded-xl shadow-2xl max-h-[90vh] w-[90%] md:w-full" :class="modal.type === 'edit-add' ? 'md:max-w-md' : 'md:max-w-lg'">
                 <template v-if="modal.type === 'edit-add'">
-                    <div class="flex items-center justify-between p-4 sm:p-5 border-b border-[var(--border-color)]">
+                    <div class="flex items-center justify-between p-4 sm:p-5 border-b border-[var(--border-color)] flex-shrink-0">
                         <h2 class="text-lg font-bold">{{modal.isEdit?'Upravit směnu':'Přidat směnu'}}</h2>
                         <button @click="closeModal" class="p-1 rounded-full hover:bg-black/10 dark:hover:bg-white/10 text-[var(--muted-text)]"><svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
                     </div>
@@ -405,7 +412,7 @@ if (isset($_GET['setup'])) { setupDatabase(Database::getInstance()); exit; }
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4"><div><label class="block text-sm font-medium text-[var(--muted-text)] mb-1">Od</label><input type="time" v-model="shiftForm.start_time" required class="form-input"></div><div><label class="block text-sm font-medium text-[var(--muted-text)] mb-1">Do</label><input type="time" v-model="shiftForm.end_time" required class="form-input"></div></div>
                         <div><label class="block text-sm font-medium text-[var(--muted-text)] mb-1">Poznámka</label><textarea v-model="shiftForm.note" rows="3" class="form-input"></textarea></div>
                     </form>
-                    <div class="p-4 sm:p-5 mt-auto flex flex-col-reverse sm:flex-row sm:justify-between items-center gap-3 border-t border-[var(--border-color)] bg-[var(--main-bg)] rounded-b-xl">
+                    <div class="p-4 sm:p-5 mt-auto flex flex-col-reverse sm:flex-row sm:justify-between items-center gap-3 border-t border-[var(--border-color)] bg-[var(--main-bg)] rounded-b-xl flex-shrink-0">
                         <button type="button" v-if="modal.isEdit" @click="handleDelete" class="w-full sm:w-auto px-4 py-2.5 rounded-lg font-semibold text-white bg-[var(--danger-color)] hover:bg-[var(--danger-color-hover)] transition-colors">Smazat</button>
                         <div class="flex flex-col sm:flex-row justify-end gap-3 w-full sm:w-auto"><button type="button" @click="closeModal" class="w-full sm:w-auto px-4 py-2.5 rounded-lg font-semibold bg-gray-200 hover:bg-gray-300 dark:bg-slate-600 dark:hover:bg-slate-500 transition-colors">Zrušit</button><button type="submit" @click="handleFormSubmit" class="w-full sm:w-auto px-4 py-2.5 rounded-lg font-semibold text-white bg-[var(--accent-color)] hover:bg-[var(--accent-color-hover)] transition-colors">Uložit</button></div>
                     </div>
@@ -454,7 +461,7 @@ createApp({
             const toast = reactive({ visible: false, message: '', type: 'success', timeoutId: null });
             const isDarkMode = ref(localStorage.getItem('theme') === 'dark');
             const mobileMenuOpen = ref(false);
-            const calendarShiftLimit = ref(3);
+            const calendarShiftLimit = ref(4);
 
             // --- COMPUTED & WATCHERS ---
             const activeFilter = computed(() => state.view === 'calendar' ? state.calendarFilter : state.dashboardFilter);
