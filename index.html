@@ -1,659 +1,558 @@
 <?php
-// index.php - Profesionální plánovač směn v jednom souboru
+ob_start(); // Start output buffering
 
-// --- 1. KONFIGURACE APLIKACE ---
-
-/**
- * DŮLEŽITÉ: V reálném provozu ukládejte přihlašovací údaje bezpečněji,
- * například mimo veřejně dostupný adresář webu pomocí proměnných prostředí.
- */
-const DB_HOST = "sql6.webzdarma.cz";
-const DB_NAME = "smenywzcz0563";
-const DB_USER = "smenywzcz0563";
-const DB_PASS = "._LLhU8_%&R52ONuT57B";
+// --- 1. KONFIGURACE ---
+const DB_HOST = "";
+const DB_NAME = "";
+const DB_USER = "";
+const DB_PASS = "";
 const DB_CHARSET = "utf8mb4";
+const APP_TITLE = "Plánovač Směn";
 
-// Seznam zaměstnanců (v budoucnu by se načítal z databáze)
-const EMPLOYEES = [
-    'Kuchyně' => [
-        ['name' => 'Hanka', 'color' => '#FFEB3B'],
-        ['name' => 'Marie', 'color' => '#FF7F80'],
-        ['name' => 'Martina', 'color' => '#4CAF50'],
-        ['name' => 'Martin', 'color' => '#1E00FF'],
-        ['name' => 'Renata', 'color' => '#808080']
-    ],
-    'Kurýři' => [
-        ['name' => 'Jirka', 'color' => '#32CD32'],
-        ['name' => 'Katka - Kurýr', 'color' => '#FF69B4'],
-        ['name' => 'Michaela', 'color' => '#00BFFF'],
-        ['name' => 'Pavel', 'color' => '#8A2BE2'],
-        ['name' => 'Tomáš', 'color' => '#FF4500'],
-        ['name' => 'Kristián', 'color' => '#1f7a39']
-    ],
-    'Bar' => [
-        ['name' => 'Jiřina', 'color' => '#DC143C'],
-        ['name' => 'Katka - Bar', 'color' => '#FFA450']
-    ]
-];
-
-// --- 2. PHP TŘÍDY PRO LOGIKU APLIKACE ---
-
-/**
- * Třída Database pro správu připojení k databázi (Singleton pattern)
- */
-class Database {
-    private static $instance = null;
-    private $pdo;
-
-    private function __construct() {
-        $dsn = "mysql:host=" . DB_HOST . ";dbname=" . DB_NAME . ";charset=" . DB_CHARSET;
-        $options = [
-            PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
-            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-            PDO::ATTR_EMULATE_PREPARES   => false,
-        ];
-        try {
-            $this->pdo = new PDO($dsn, DB_USER, DB_PASS, $options);
-        } catch (PDOException $e) {
-            // Logovat chybu, neukazovat uživateli citlivé informace
-            error_log("Chyba připojení k DB: " . $e->getMessage());
-            // Zastavit aplikaci s obecnou chybou
-            http_response_code(500);
-            die(json_encode(['error' => 'Chyba připojení k databázi.']));
-        }
+// --- 2. JEDNORÁZOVÉ NASTAVENÍ DATABÁZE ---
+function setupDatabase(PDO $pdo): void
+{
+    header('Content-Type: text/plain; charset=utf-8');
+    try {
+        $pdo->exec("DROP TABLE IF EXISTS `shifts`, `employees`, `departments`;");
+        $sql = "
+        CREATE TABLE `departments` (`id` INT AUTO_INCREMENT PRIMARY KEY, `name` VARCHAR(100) NOT NULL UNIQUE) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+        CREATE TABLE `employees` (`id` INT AUTO_INCREMENT PRIMARY KEY, `name` VARCHAR(100) NOT NULL, `department_id` INT NOT NULL, `color` VARCHAR(7) NOT NULL DEFAULT '#3b82f6', `is_active` BOOLEAN NOT NULL DEFAULT TRUE, `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (`department_id`) REFERENCES `departments`(`id`) ON DELETE CASCADE) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+        CREATE TABLE `shifts` (
+            `id` INT AUTO_INCREMENT PRIMARY KEY,
+            `employee_id` INT NOT NULL,
+            `start_time` DATETIME NOT NULL,
+            `end_time` DATETIME NOT NULL,
+            `note` TEXT,
+            `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            `deleted_at` TIMESTAMP NULL DEFAULT NULL,
+            FOREIGN KEY (`employee_id`) REFERENCES `employees`(`id`) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;";
+        $pdo->exec($sql);
+        echo "Struktura tabulek úspěšně vytvořena.\n";
+        $pdo->exec("INSERT INTO `departments` (`id`, `name`) VALUES (1, 'Kuchyně'), (2, 'Kurýři'), (3, 'Bar'), (4, 'Ostatní výpomoc');");
+        $pdo->exec("
+            INSERT INTO `employees` (`name`, `department_id`, `color`) VALUES
+            ('Hanka', 1, '#FFEB3B'), ('Marie', 1, '#FF7F80'), ('Martina', 1, '#4CAF50'), ('Martin', 1, '#1E00FF'), ('Renata', 1, '#808080'),
+            ('Jirka', 2, '#32CD32'), ('Katka - Kurýr', 2, '#FF69B4'), ('Michaela', 2, '#00BFFF'), ('Pavel', 2, '#8A2BE2'), ('Tomáš', 2, '#FF4500'),
+            ('Kristián', 2, '#1f7a39'), ('Jiřina', 3, '#DC143C'), ('Katka - Bar', 3, '#FFA450'), ('Výpomoc', 4, '#f97316');");
+        echo "Data vložena.\nNASTAVENÍ DOKONČENO.";
+    } catch (PDOException $e) {
+        http_response_code(500);
+        die("Chyba při nastavování databáze: " . $e->getMessage());
     }
+}
 
-    public static function getInstance(): self {
+// --- 3. TŘÍDY PRO LOGIKU APLIKACE ---
+class Database
+{
+    private static ?PDO $instance = null;
+    public static function getInstance(): PDO
+    {
         if (self::$instance === null) {
-            self::$instance = new self();
+            $dsn = "mysql:host=" . DB_HOST . ";dbname=" . DB_NAME . ";charset=" . DB_CHARSET;
+            $options = [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC, PDO::ATTR_EMULATE_PREPARES => false];
+            try { self::$instance = new PDO($dsn, DB_USER, DB_PASS, $options); } catch (PDOException $e) { http_response_code(500); header('Content-Type: application/json; charset=utf-8'); echo json_encode(['error' => 'Chyba připojení k databázi.']); exit; }
         }
         return self::$instance;
     }
-
-    public function getConnection(): PDO {
-        return $this->pdo;
-    }
 }
 
-/**
- * Třída ShiftApi pro zpracování všech datových operací se směnami
- */
-class ShiftApi {
+class ApiController
+{
     private PDO $pdo;
-
-    public function __construct() {
-        $this->pdo = Database::getInstance()->getConnection();
-    }
-    
-    private function getEmployeeColor(string $name): string {
-        foreach (EMPLOYEES as $department) {
-            foreach ($department as $employee) {
-                if ($employee['name'] === $name) {
-                    return $employee['color'];
-                }
-            }
-        }
-        return '#3b82f6'; // Výchozí barva
-    }
-
-    public function handleRequest(): void {
-        $method = $_SERVER['REQUEST_METHOD'];
-        // Pro PUT a DELETE metody musíme data číst z 'php://input'
+    public function __construct() { $this->pdo = Database::getInstance(); }
+    public function handleRequest(): void
+    {
+        $action = $_GET['action'] ?? null;
         $input = json_decode(file_get_contents('php://input'), true) ?? [];
-        
-        // Pro POST požadavky mohou data přijít i v $_POST (pokud nejsou JSON)
-        if ($method === 'POST' && empty($input)) {
-             $input = $_POST;
-        }
-
         try {
-            switch ($method) {
-                case 'GET':
-                    // GET je specificky pro načtení všech směn
-                    $this->getShifts();
-                    break;
-                case 'POST':
-                    $this->addShift($input);
-                    break;
-                case 'PUT':
-                    $this->updateShift($input);
-                    break;
-                case 'DELETE':
-                    $this->deleteShift($input);
-                    break;
-                default:
-                    $this->sendResponse(405, ['error' => 'Metoda není povolena.']);
-                    break;
+            switch ($action) {
+                case 'get_initial_data': $this->getInitialData($_GET['year'] ?? date('Y'), $_GET['month'] ?? date('m'), $_GET['employeeId'] ?? 'all'); break;
+                case 'create_shift': $this->createShift($input); break;
+                case 'update_shift': $this->updateShift($input); break;
+                case 'delete_shift': $this->deleteShift($input); break;
+                case 'get_dashboard_data': $this->getDashboardData($_GET['year'] ?? date('Y'), $_GET['month'] ?? date('m'), $_GET['employeeId'] ?? 'all'); break;
+                case 'export_xls': $this->exportXls($_GET['year'] ?? date('Y'), $_GET['month'] ?? date('m'), $_GET['employeeId'] ?? 'all'); break;
+                case 'get_print_view': $this->getPrintableView($_GET['year'] ?? date('Y'), $_GET['month'] ?? date('m'), $_GET['employeeId'] ?? 'all'); break;
+                default: $this->sendResponse(404, ['error' => 'Akce nebyla nalezena.']);
             }
-        } catch (Exception $e) {
-            error_log("API Error: " . $e->getMessage());
-            $this->sendResponse(500, ['error' => 'Interní chyba serveru.']);
+        } catch (Exception $e) { error_log("API Error: " . $e->getMessage()); $this->sendResponse(500, ['error' => 'Interní chyba serveru: ' . $e->getMessage()]); }
+    }
+    private function fetchShifts(string $year, string $month, string $employeeId = 'all'): array
+    {
+        $startDate = "{$year}-{$month}-01 00:00:00";
+        $endDate = date("Y-m-t 23:59:59", strtotime($startDate));
+        $sql = "SELECT s.id, s.employee_id, s.start_time, s.end_time, s.note, e.name, e.color, d.name as position FROM shifts s JOIN employees e ON s.employee_id = e.id JOIN departments d ON e.department_id = d.id WHERE s.start_time <= :endDate AND s.end_time >= :startDate AND e.is_active = TRUE AND s.deleted_at IS NULL";
+        $params = [':startDate' => $startDate, ':endDate' => $endDate];
+        if ($employeeId !== 'all' && is_numeric($employeeId)) { $sql .= " AND s.employee_id = :employeeId"; $params[':employeeId'] = $employeeId; }
+        $sql .= " ORDER BY s.start_time ASC, e.name ASC";
+        $stmt = $this->pdo->prepare($sql); $stmt->execute($params); return $stmt->fetchAll();
+    }
+    private function fetchEmployees(): array { return $this->pdo->query("SELECT e.id, e.name, e.color, d.name as position FROM employees e JOIN departments d ON e.department_id = d.id WHERE e.is_active = TRUE ORDER BY d.id, e.name")->fetchAll(); }
+    public function getInitialData(string $year, string $month, string $employeeId): void { $this->sendResponse(200, ['shifts' => $this->fetchShifts($year, $month, $employeeId), 'employees' => $this->fetchEmployees()]); }
+    public function createShift(array $data): void { $this->validateData($data, ['employee_id', 'start_time', 'end_time']); $sql = "INSERT INTO shifts (employee_id, start_time, end_time, note) VALUES (:employee_id, :start_time, :end_time, :note)"; $this->pdo->prepare($sql)->execute([':employee_id' => $data['employee_id'], ':start_time' => $data['start_time'], ':end_time' => $data['end_time'], ':note' => $data['note'] ?? '']); $this->sendResponse(201, ['id' => (int)$this->pdo->lastInsertId(), 'message' => 'Směna úspěšně vytvořena.']); }
+    public function updateShift(array $data): void { $this->validateData($data, ['id', 'start_time', 'end_time']); $sql = "UPDATE shifts SET start_time = :start_time, end_time = :end_time, note = :note WHERE id = :id AND deleted_at IS NULL"; $this->pdo->prepare($sql)->execute([':id' => $data['id'], ':start_time' => $data['start_time'], ':end_time' => $data['end_time'], ':note' => $data['note'] ?? '']); $this->sendResponse(200, ['id' => (int)$data['id'], 'message' => 'Směna aktualizována.']); }
+    public function deleteShift(array $data): void { $this->validateData($data, ['id']); $sql = "UPDATE shifts SET deleted_at = CURRENT_TIMESTAMP WHERE id = :id"; $this->pdo->prepare($sql)->execute([':id' => $data['id']]); $this->sendResponse(200, ['id' => (int)$data['id'], 'message' => 'Směna smazána.']); }
+
+    public function getDashboardData(string $year, string $month, string $employeeId = 'all'): void
+    {
+        $targetHours = 160;
+        $startOfMonth = "{$year}-{$month}-01 00:00:00";
+        $endOfMonth = date("Y-m-t 23:59:59", strtotime($startOfMonth));
+
+        $employeesQuery = "SELECT e.id, e.name, e.color, d.name as position FROM employees e JOIN departments d ON e.department_id = d.id WHERE e.is_active = TRUE";
+        $empParams = [];
+        if ($employeeId !== 'all' && is_numeric($employeeId)) { $employeesQuery .= " AND e.id = :employeeId"; $empParams[':employeeId'] = $employeeId; }
+        $employeesQuery .= " ORDER BY e.name ASC";
+        $stmt = $this->pdo->prepare($employeesQuery); $stmt->execute($empParams);
+        $employeeStats = $stmt->fetchAll();
+
+        $summary = ['total_shifts' => 0, 'total_hours' => 0, 'total_deleted_shifts' => 0];
+
+        $activeShiftsSql = "SELECT COALESCE(SUM(TIMESTAMPDIFF(SECOND, start_time, end_time) / 3600), 0) as total_hours, COUNT(id) as shift_count FROM shifts WHERE employee_id = :employeeId AND deleted_at IS NULL AND start_time BETWEEN :startOfMonth AND :endOfMonth";
+        $activeShiftsStmt = $this->pdo->prepare($activeShiftsSql);
+
+        $deletedShiftsSql = "SELECT COUNT(id) as deleted_shift_count FROM shifts WHERE employee_id = :employeeId AND deleted_at IS NOT NULL AND deleted_at BETWEEN :startOfMonth AND :endOfMonth";
+        $deletedShiftsStmt = $this->pdo->prepare($deletedShiftsSql);
+
+        foreach ($employeeStats as &$stat) {
+            $activeShiftsStmt->execute([':employeeId' => $stat['id'], ':startOfMonth' => $startOfMonth, ':endOfMonth' => $endOfMonth]);
+            $activeShiftData = $activeShiftsStmt->fetch();
+            
+            $deletedShiftsStmt->execute([':employeeId' => $stat['id'], ':startOfMonth' => $startOfMonth, ':endOfMonth' => $endOfMonth]);
+            $deletedShiftData = $deletedShiftsStmt->fetch();
+
+            $stat['total_hours'] = round((float)$activeShiftData['total_hours'], 1);
+            $stat['shift_count'] = (int)$activeShiftData['shift_count'];
+            $stat['deleted_shift_count'] = (int)$deletedShiftData['deleted_shift_count'];
+            $stat['load_percentage'] = $targetHours > 0 ? min(100, round(($stat['total_hours'] / $targetHours) * 100)) : 0;
+            
+            $summary['total_shifts'] += $stat['shift_count'];
+            $summary['total_hours'] += $stat['total_hours'];
+            $summary['total_deleted_shifts'] += $stat['deleted_shift_count'];
         }
+
+        usort($employeeStats, fn ($a, $b) => $b['total_hours'] <=> $a['total_hours']);
+        $summary['total_hours'] = round($summary['total_hours'], 1);
+        $this->sendResponse(200, ['summary' => $summary, 'employee_stats' => $employeeStats]);
     }
 
-    private function getShifts(): void {
-        $stmt = $this->pdo->query("SELECT id, name, shift_date, note, color FROM shifts ORDER BY shift_date ASC, name ASC");
-        $shifts = $stmt->fetchAll();
-        $this->sendResponse(200, $shifts);
-    }
-
-    private function addShift(array $data): void {
-        $this->validateShiftData($data, ['name', 'shift_date']);
-        if ($data['shift_date'] < date('Y-m-d')) {
-            $this->sendResponse(400, ['error' => 'Nelze přidat směnu do minulosti.']);
-            return;
-        }
-        $color = $this->getEmployeeColor($data['name']);
-        $sql = "INSERT INTO shifts (name, shift_date, note, color) VALUES (:name, :shift_date, :note, :color)";
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute([
-            ':name' => $data['name'],
-            ':shift_date' => $data['shift_date'],
-            ':note' => $data['note'] ?? '',
-            ':color' => $color,
-        ]);
-        $newId = $this->pdo->lastInsertId();
-        $this->sendResponse(201, ['id' => (int)$newId, 'message' => 'Směna úspěšně vytvořena.']);
-    }
+    public function exportXls(string $year, string $month, string $employeeId): void { ob_end_clean(); $shifts = $this->fetchShifts($year, $month, $employeeId); header('Content-Type: application/vnd.ms-excel; charset=utf-8'); header('Content-Disposition: attachment; filename="smeny-' . $year . '-' . $month . '.xls"'); echo "\xEF\xBB\xBF"; $output = fopen('php://output', 'w'); fputcsv($output, ['Datum', 'Zaměstnanec', 'Pozice', 'Od', 'Do', 'Celkem hodin', 'Poznámka'], "\t"); foreach ($shifts as $s) { $startTime = new DateTime($s['start_time']); $endTime = new DateTime($s['end_time']); $duration = $startTime->diff($endTime); $hours = $duration->h + ($duration->i / 60); fputcsv($output, [date('d.m.Y', strtotime($s['start_time'])), $s['name'], $s['position'], date('H:i', strtotime($s['start_time'])), date('H:i', strtotime($s['end_time'])), number_format($hours, 2), $s['note']], "\t"); } fclose($output); exit; }
     
-    private function updateShift(array $data): void {
-        $this->validateShiftData($data, ['id', 'shift_date']);
-        $this->checkIfShiftIsInPast($data['id']);
-        if ($data['shift_date'] < date('Y-m-d')) {
-            $this->sendResponse(400, ['error' => 'Nelze přesunout směnu do minulosti.']);
-            return;
+    public function getPrintableView(string $year, string $month, string $employeeId): void
+    {
+        ob_end_clean();
+        $shifts = $this->fetchShifts($year, $month, $employeeId);
+        $monthName = mb_convert_case(date('F', strtotime("{$year}-{$month}-01")), MB_CASE_TITLE, "UTF-8");
+        echo <<<HTML
+<!DOCTYPE html>
+<html lang='cs'>
+<head>
+    <meta charset='UTF-8'>
+    <title>Tisk směn - {$monthName} {$year}</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
+        body{font-family:'Inter',sans-serif;margin:0;padding:0;background-color:#f0f0f0;color:#111;}
+        .page{width:210mm;min-height:297mm;padding:20mm;margin:10mm auto;background:white;box-shadow:0 0 5px rgba(0,0,0,0.1);}
+        .header{text-align:center;border-bottom:2px solid #ccc;padding-bottom:10px;margin-bottom:20px;}
+        .header h1{margin:0;font-size:24pt;}
+        .header p{margin:5px 0 0;color:#555;font-size:14pt;}
+        table{width:100%;border-collapse:collapse;font-size:10pt;}
+        th,td{border:1px solid #ddd;padding:8px;text-align:left;}
+        th{background-color:#f9f9f9;font-weight:600;}
+        .print-info{text-align:center;margin-top:20px;padding:10px;background-color:#eef;border:1px solid #cce;display:block;border-radius:5px;}
+        @media print{body{margin:0;padding:0;background-color:white;}.page{box-shadow:none;margin:0;width:auto;min-height:auto;padding:0;}.print-info{display:none;}}
+    </style>
+</head>
+<body>
+<div class="page">
+    <div class="header">
+        <h1>Přehled směn</h1>
+        <p>{$monthName} {$year}</p>
+    </div>
+    <div class="print-info">Pro uložení do PDF použijte funkci tisku vašeho prohlížeče (Ctrl+P) a vyberte "Uložit jako PDF".</div>
+    <table>
+        <thead>
+            <tr><th>Datum</th><th>Zaměstnanec</th><th>Pozice</th><th>Od</th><th>Do</th><th>Hodin</th><th>Poznámka</th></tr>
+        </thead>
+        <tbody>
+HTML;
+        foreach ($shifts as $s) {
+            $startTime = new DateTime($s['start_time']);
+            $endTime = new DateTime($s['end_time']);
+            $duration = $startTime->diff($endTime);
+            $hours = $duration->h + ($duration->i / 60);
+            echo "<tr><td>" . date('d.m.Y', strtotime($s['start_time'])) . "</td><td>" . htmlspecialchars($s['name']) . "</td><td>" . htmlspecialchars($s['position']) . "</td><td>" . date('H:i', strtotime($s['start_time'])) . "</td><td>" . date('H:i', strtotime($s['end_time'])) . "</td><td>" . number_format($hours, 2) . "</td><td>" . htmlspecialchars($s['note']) . "</td></tr>";
         }
-        $sql = "UPDATE shifts SET shift_date = :shift_date, note = :note WHERE id = :id";
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute([':shift_date' => $data['shift_date'], ':note' => $data['note'] ?? '', ':id' => $data['id']]);
-        if ($stmt->rowCount() > 0) {
-            $this->sendResponse(200, ['id' => (int)$data['id'], 'message' => 'Směna aktualizována.']);
-        } else {
-            $this->sendResponse(200, ['id' => (int)$data['id'], 'message' => 'Žádné změny k uložení.']);
-        }
+        echo <<<HTML
+        </tbody>
+    </table>
+</div>
+</body>
+</html>
+HTML;
+        exit;
     }
-
-    private function deleteShift(array $data): void {
-        $this->validateShiftData($data, ['id']);
-        $this->checkIfShiftIsInPast($data['id']);
-        $stmt = $this->pdo->prepare("DELETE FROM shifts WHERE id = :id");
-        $stmt->execute([':id' => $data['id']]);
-        if ($stmt->rowCount() > 0) {
-            $this->sendResponse(200, ['id' => (int)$data['id'], 'message' => 'Směna smazána.']);
-        } else {
-            $this->sendResponse(404, ['error' => 'Směna pro smazání nenalezena.']);
-        }
-    }
-
-    private function validateShiftData(array $data, array $requiredFields): void {
-        foreach ($requiredFields as $field) {
-            if (empty($data[$field])) {
-                $this->sendResponse(400, ['error' => "Chybějící povinné pole: {$field}"]);
-                exit;
-            }
-        }
-    }
-
-    private function checkIfShiftIsInPast(int $id): void {
-        $stmt = $this->pdo->prepare("SELECT shift_date FROM shifts WHERE id = :id");
-        $stmt->execute([':id' => $id]);
-        $shift = $stmt->fetch();
-        if (!$shift) {
-            $this->sendResponse(404, ['error' => 'Směna nenalezena.']);
-            exit;
-        }
-        if ($shift['shift_date'] < date('Y-m-d')) {
-            $this->sendResponse(400, ['error' => 'Nelze manipulovat se směnami v minulosti.']);
-            exit;
-        }
-    }
-
-    private function sendResponse(int $statusCode, array $data): void {
-        http_response_code($statusCode);
-        header('Content-Type: application/json; charset=utf-8');
-        echo json_encode($data);
-    }
+    private function validateData(array $data, array $fields): void { foreach ($fields as $f) { if (empty($data[$f]) && !is_numeric($data[$f]) && $f !== 'note') $this->sendResponse(400, ['error' => "Chybějící pole: {$f}"]); }}
+    private function sendResponse(int $code, array $data): void { if (ob_get_level()) ob_end_clean(); http_response_code($code); header('Content-Type: application/json; charset=utf-8'); echo json_encode($data, JSON_NUMERIC_CHECK | JSON_PRETTY_PRINT); exit(); }
 }
 
-// --- 3. API ROUTER ---
-// Tato část kódu rozhodne, zda se má zobrazit HTML stránka, nebo zpracovat API požadavek.
-// API požadavek poznáme podle toho, že se nejedná o metodu GET pro načtení stránky.
-// GET požadavky s parametrem 'api=true' jsou také pro API (pro načtení dat).
-if ($_SERVER['REQUEST_METHOD'] !== 'GET' || isset($_GET['api'])) {
-    $api = new ShiftApi();
-    $api->handleRequest();
-    exit; // Důležité: Ukončíme skript po odeslání API odpovědi.
-}
-
-// Pokud kód dojde až sem, znamená to, že se má vykreslit HTML stránka.
-$employees_json = json_encode(EMPLOYEES);
-
+if (isset($_GET['api'])) { (new ApiController())->handleRequest(); exit; }
+if (isset($_GET['setup'])) { setupDatabase(Database::getInstance()); exit; }
 ?>
 <!DOCTYPE html>
-<html lang="cs">
+<html lang="cs" class="h-full">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Profesionální Plánovač Směn</title>
-    
+    <title><?= htmlspecialchars(APP_TITLE) ?></title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
-        /* Základní styly pro rozvržení a funkčnost. */
-        html, body {
-            height: 100%;
-            margin: 0;
-            overflow: hidden;
-            font-family: 'Inter', sans-serif;
-            -webkit-font-smoothing: antialiased;
-            -moz-osx-font-smoothing: grayscale;
+        :root {
+            --main-bg: #F8FAFC; 
+            --secondary-bg: #FFFFFF;
+            --text-color: #1F2937;
+            --border-color: #E2E8F0;
+            --muted-text: #64748B;
+            --accent-color: #4F46E5;
+            --accent-color-hover: #4338CA;
+            --danger-color: #DC2626;
+            --danger-color-hover: #B91C1C;
         }
-        body { display: flex; flex-direction: column; background-color: #f8fafc; color: #1f2937; }
-        .main-container { flex-grow: 1; overflow-y: auto; padding: 1.5rem; }
-        .modal-transition { transition: opacity 0.25s ease, transform 0.25s ease; }
-        .modal-hidden { opacity: 0; transform: scale(0.95); pointer-events: none; }
-        .modal-visible { opacity: 1; transform: scale(1); pointer-events: auto; }
-        .calendar-day:hover .add-shift-plus { opacity: 1; }
-        .add-shift-plus { opacity: 0; transition: opacity 0.2s ease-in-out; }
-        .loading-spinner { border: 4px solid rgba(0, 0, 0, 0.1); border-left-color: #ffffff; border-radius: 50%; width: 1.5rem; height: 1.5rem; animation: spin 1s linear infinite; }
-        @keyframes spin { to { transform: rotate(360deg); } }
-        .calendar-day { min-height: 120px; display: flex; flex-direction: column; }
-        .shifts-container { flex-grow: 1; overflow-y: auto; }
-        .shift-item { cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .past-day { background-color: #f9fafb; cursor: not-allowed; pointer-events: none; opacity: 0.7; }
-        .past-day .add-shift-plus { display: none !important; }
-        .past-day .shift-item { cursor: default; }
 
-        @media (max-width: 768px) {
-            .main-container { padding: 1rem; }
-            .calendar-day { min-height: 90px; }
-            .shift-item { font-size: 0.7rem; padding: 0.2rem 0.4rem; }
+        html.dark {
+            --main-bg: #0F172A;
+            --secondary-bg: #1E293B;
+            --text-color: #F8FAFC;
+            --border-color: #334155;
+            --muted-text: #94A3B8;
+            --accent-color: #6366F1;
+            --accent-color-hover: #818CF8;
+        }
+        
+        body { 
+            font-family: 'Inter', sans-serif; 
+            background-color: var(--main-bg); 
+            color: var(--text-color);
+            -webkit-font-smoothing: antialiased; 
+            -moz-osx-font-smoothing: grayscale;
+            overflow-x: hidden;
+        }
+
+        [v-cloak] { display: none; }
+
+        .fade-enter-active, .fade-leave-active { transition: opacity 0.3s ease; }
+        .fade-enter-from, .fade-leave-to { opacity: 0; }
+        .modal-bg-enter-active, .modal-bg-leave-active { transition: opacity 0.3s ease; }
+        .modal-bg-enter-from, .modal-bg-leave-to { opacity: 0; }
+        .modal-panel-enter-active, .modal-panel-leave-active { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .modal-panel-enter-from, .modal-panel-leave-to { opacity: 0; transform: scale(0.95); }
+        .card-enter-active { transition: all 0.5s cubic-bezier(0.25, 0.8, 0.25, 1); }
+        .card-enter-from { opacity: 0; transform: translateY(30px); }
+        .card-move { transition: transform 0.5s ease; }
+        .progress-circle { transform: rotate(-90deg); }
+
+        .theme-toggle-icon .sun, .theme-toggle-icon .moon { transition: transform 0.5s ease, opacity 0.3s ease; }
+        html.dark .theme-toggle-icon .sun { transform: scale(1.5) rotate(90deg); opacity: 0; }
+        html:not(.dark) .theme-toggle-icon .moon { transform: scale(0.5) rotate(-90deg); opacity: 0; }
+
+        /* Vylepšený styl pro karty */
+        .dashboard-card {
+            background-color: var(--secondary-bg);
+            border-radius: 0.75rem; /* 12px */
+            border: 1px solid var(--border-color);
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05), 0 2px 4px -2px rgb(0 0 0 / 0.05);
+            transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+        }
+        .dashboard-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+        }
+
+        /* Lepší styly pro formulářové prvky */
+        .form-input {
+            background-color: var(--main-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 0.5rem; /* 8px */
+            padding: 0.75rem 1rem; /* 12px 16px */
+            width: 100%;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            color: var(--text-color);
+        }
+        .form-input:focus {
+            outline: none;
+            border-color: var(--accent-color);
+            box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-color) 20%, transparent);
+        }
+        /* Korekce pro date/time input a select v dark módu */
+        html.dark .form-input {
+           color-scheme: dark;
         }
     </style>
 </head>
-<body class="bg-gray-50">
-
-    <div id="app-root" class="h-full flex flex-col">
-        <div class="flex items-center justify-center h-full">
-            <div class="text-center">
-                <h2 class="text-2xl font-semibold text-gray-700">Načítání aplikace...</h2>
-                <div class="loading-spinner w-12 h-12 mx-auto mt-4" style="border-left-color: #3b82f6;"></div>
+<body class="min-h-screen">
+<div id="app" class="h-screen flex flex-col" v-cloak>
+    <header class="bg-[var(--secondary-bg)]/80 backdrop-blur-sm border-b border-[var(--border-color)] flex-shrink-0 z-20 sticky top-0">
+        <div class="w-full max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <div class="flex items-center gap-4">
+                    <div class="flex-shrink-0"><h1 class="text-xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-[var(--accent-color)] to-blue-400">Profi Plánovač</h1></div>
+                    <nav class="hidden md:block">
+                        <div class="ml-10 flex items-baseline space-x-1">
+                            <a @click.prevent="setView('calendar')" href="#" class="px-3 py-2 rounded-md text-sm font-semibold transition-colors duration-200" :class="state.view==='calendar' ? 'bg-[var(--accent-color)]/10 text-[var(--accent-color)]' : 'text-[var(--muted-text)] hover:bg-black/5 dark:hover:bg-white/5 hover:text-[var(--text-color)]'">Kalendář</a>
+                            <a @click.prevent="setView('dashboard')" href="#" class="px-3 py-2 rounded-md text-sm font-semibold transition-colors duration-200" :class="state.view==='dashboard' ? 'bg-[var(--accent-color)]/10 text-[var(--accent-color)]' : 'text-[var(--muted-text)] hover:bg-black/5 dark:hover:bg-white/5 hover:text-[var(--text-color)]'">Dashboard</a>
+                        </div>
+                    </nav>
+                </div>
+                <div class="flex items-center gap-2 sm:gap-4">
+                    <button @click="toggleDarkMode" class="theme-toggle-icon relative h-9 w-9 text-[var(--muted-text)] hover:text-[var(--accent-color)] flex items-center justify-center rounded-full hover:bg-black/5 dark:hover:bg-white/5 transition-colors duration-200" aria-label="Přepnout motiv"><svg class="sun absolute inset-0 p-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.25a.75.75 0 01.75.75v2.25a.75.75 0 01-1.5 0V3a.75.75 0 01.75-.75zM7.5 12a4.5 4.5 0 119 0 4.5 4.5 0 01-9 0zM18.894 6.106a.75.75 0 011.06-1.06l1.591 1.59a.75.75 0 11-1.06 1.06l-1.591-1.59zM21.75 12a.75.75 0 01-.75.75h-2.25a.75.75 0 010-1.5h2.25a.75.75 0 01.75.75zM17.894 18.894a.75.75 0 011.06 1.06l-1.59 1.591a.75.75 0 11-1.06-1.06l1.59-1.591zM12 18.75a.75.75 0 01.75.75v2.25a.75.75 0 01-1.5 0v-2.25a.75.75 0 01.75-.75zM5.106 17.894a.75.75 0 011.06-1.06l1.591 1.59a.75.75 0 11-1.06 1.06l-1.591-1.59zM3 12a.75.75 0 01.75-.75h2.25a.75.75 0 010 1.5H3.75A.75.75 0 013 12zM6.106 5.106a.75.75 0 011.06 1.06l-1.59 1.591a.75.75 0 01-1.06-1.06l1.59-1.591z"/></svg><svg class="moon absolute inset-0 p-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M9.528 1.718a.75.75 0 01.162.819A8.97 8.97 0 009 6a9 9 0 009 9 8.97 8.97 0 004.463-.948.75.75 0 01.976.976 10.5 10.5 0 11-9.9-9.9.75.75 0 01.819.162z" clip-rule="evenodd" /></svg></button>
+                    <div class="-mr-2 flex md:hidden"><button @click="mobileMenuOpen=!mobileMenuOpen" type="button" class="inline-flex items-center justify-center rounded-md p-2 text-[var(--muted-text)] hover:bg-black/5 dark:hover:bg-white/5" aria-controls="mobile-menu" aria-expanded="false"><span class="sr-only">Otevřít menu</span><svg :class="{'hidden':mobileMenuOpen,'block':!mobileMenuOpen}" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" /></svg><svg :class="{'block':mobileMenuOpen,'hidden':!mobileMenuOpen}" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg></button></div>
+                </div>
             </div>
         </div>
-    </div>
-    
-    <div id="shift-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 modal-transition modal-hidden z-50">
-        <div class="bg-white rounded-xl shadow-2xl w-full max-w-md transform transition-all">
-            <form id="shift-form" class="p-8">
-                <h2 id="modal-title" class="text-2xl font-bold mb-6 text-gray-800">Přidat směnu</h2>
-                <input type="hidden" id="shift-id" name="id">
-                
-                <div class="mb-4">
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Datum směny</label>
-                    <input type="date" id="shift_date" name="shift_date" required class="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                </div>
-                <div class="mb-4">
-                    <label for="name" class="block text-sm font-medium text-gray-700 mb-1">Zaměstnanec</label>
-                    <select id="name" name="name" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500">
-                    </select>
-                </div>
-                <div class="mb-6">
-                    <label for="note" class="block text-sm font-medium text-gray-700 mb-1">Poznámka (např. čas)</label>
-                    <textarea id="note" name="note" rows="3" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Např. 17:00 - 23:00"></textarea>
-                </div>
+        <transition name="fade"><div v-show="mobileMenuOpen" class="md:hidden" id="mobile-menu"><div class="space-y-1 px-2 pt-2 pb-3 sm:px-3"><a @click.prevent="setView('calendar'); mobileMenuOpen=false" href="#" class="block px-3 py-2 rounded-md text-base font-semibold" :class="state.view==='calendar' ? 'bg-[var(--accent-color)]/10 text-[var(--accent-color)]' : 'text-[var(--muted-text)]'">Kalendář</a><a @click.prevent="setView('dashboard'); mobileMenuOpen=false" href="#" class="block px-3 py-2 rounded-md text-base font-semibold" :class="state.view==='dashboard' ? 'bg-[var(--accent-color)]/10 text-[var(--accent-color)]' : 'text-[var(--muted-text)]'">Dashboard</a></div></div></transition>
+    </header>
 
-                <div class="flex justify-between items-center flex-wrap gap-4">
-                    <button type="button" id="delete-btn-in-modal" class="hidden bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-6 rounded-lg transition-colors flex items-center justify-center gap-2 min-w-[100px]">
-                        <span id="delete-btn-text">Smazat</span>
-                        <div id="delete-spinner" class="loading-spinner hidden"></div>
-                    </button>
-                    <div class="flex justify-end gap-4 flex-grow sm:flex-grow-0">
-                        <button type="button" id="cancel-btn" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-6 rounded-lg transition-colors">Zrušit</button>
-                        <button type="submit" id="save-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg transition-colors flex items-center justify-center gap-2 min-w-[100px]">
-                            <span id="save-btn-text">Uložit</span>
-                            <div id="save-spinner" class="loading-spinner hidden"></div>
-                        </button>
+    <main class="flex-grow w-full overflow-y-auto">
+        <div class="w-full max-w-screen-2xl mx-auto py-6">
+            <div class="flex flex-col md:flex-row items-center justify-between mb-6 gap-4 px-4 sm:px-6 lg:px-8">
+                <div class="flex items-center bg-[var(--secondary-bg)] p-1 rounded-full shadow-sm border border-[var(--border-color)] flex-shrink-0"><button @click="changeMonth(-1)" class="p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/5 text-[var(--muted-text)] hover:text-[var(--text-color)] transition-colors" aria-label="Předchozí měsíc"><svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" /></svg></button><h2 class="text-lg sm:text-xl font-bold w-40 sm:w-48 text-center capitalize">{{ monthYear }}</h2><button @click="changeMonth(1)" class="p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/5 text-[var(--muted-text)] hover:text-[var(--text-color)] transition-colors" aria-label="Následující měsíc"><svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" /></svg></button></div>
+                <div class="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
+                    <select v-if="state.employees.length>0" v-model="activeFilter.employeeId" class="form-input !py-2.5 w-full md:w-auto flex-grow"><option value="all">Všichni zaměstnanci</option><template v-for="(group,department) in groupedEmployees"><optgroup :label="department"><option v-for="emp in group" :key="emp.id" :value="emp.id">{{emp.name}}</option></optgroup></template></select>
+                    <div v-if="state.view==='calendar'" class="flex gap-2 w-full md:w-auto">
+                        <button @click="exportToXLS" class="w-full md:w-auto bg-green-100 hover:bg-green-200 text-green-800 dark:bg-green-800/50 dark:hover:bg-green-800/80 dark:text-green-100 font-bold py-2 px-3 text-sm rounded-lg transition-colors flex items-center justify-center gap-2">XLS</button>
+                        <button @click="exportToPDF" class="w-full md:w-auto bg-red-100 hover:bg-red-200 text-red-800 dark:bg-red-800/50 dark:hover:bg-red-800/80 dark:text-red-100 font-bold py-2 px-3 text-sm rounded-lg transition-colors flex items-center justify-center gap-2">PDF</button>
                     </div>
                 </div>
-            </form>
+            </div>
+            
+            <div class="w-full">
+                <transition name="fade" mode="out-in">
+                    <div v-if="state.isLoading" class="flex-grow flex items-center justify-center h-full text-[var(--muted-text)] py-20"><svg class="animate-spin -ml-1 mr-3 h-8 w-8" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>Načítání dat...</div>
+                    <div v-else-if="state.view==='calendar'" key="calendar">
+                        <div class="hidden md:grid grid-cols-7 gap-1 text-center font-semibold text-[var(--muted-text)] mb-2 px-4 sm:px-6 lg:px-8 text-xs uppercase tracking-wider"><div>Po</div><div>Út</div><div>St</div><div>Čt</div><div>Pá</div><div>So</div><div>Ne</div></div>
+                        <div class="hidden md:grid grid-cols-7 grid-rows-5 gap-2 px-4 sm:px-6 lg:px-8">
+                            <div v-for="n in calendar.dayOffset" class="rounded-lg bg-black/5 dark:bg-white/5"></div>
+                            <div v-for="day in calendar.daysInMonth" :class="['relative border border-transparent hover:border-[var(--accent-color)]/50 rounded-lg p-2 flex flex-col transition-all duration-200 group cursor-pointer min-h-[120px]', {'bg-[var(--secondary-bg)]': !isPast(day)}, {'bg-slate-100 dark:bg-slate-800/50 opacity-60': isPast(day)}, {'!border-[var(--accent-color)] border-2': isToday(day)}]" @click="openDayDetailModal(getDateString(day))">
+                                <div class="flex justify-between items-center mb-1"><span class="font-bold" :class="{'text-[var(--accent-color)]': isToday(day)}">{{day}}</span></div>
+                                <button v-if="!isPast(day)" @click.stop="openAddModal(getDateString(day))" class="absolute top-1 right-1 text-[var(--accent-color)] bg-[var(--accent-color)]/10 hover:bg-[var(--accent-color)]/20 rounded-full w-7 h-7 flex items-center justify-center transition opacity-0 group-hover:opacity-100 focus:opacity-100" title="Přidat směnu"><svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" /></svg></button>
+                                <div class="flex-grow space-y-1 overflow-hidden">
+                                    <div v-for="(shift, index) in getShiftsForDay(day)" v-show="index < calendarShiftLimit" class="text-xs font-semibold px-2 py-1 rounded-md" :style="{backgroundColor:shift.color,color:getContrastColor(shift.color)}" :title="getShiftTitle(shift)"><span class="font-bold">{{formatTime(shift.start_time)}}</span> {{shift.name}}</div>
+                                    <div v-if="getShiftsForDay(day).length > calendarShiftLimit" class="text-xs font-semibold text-[var(--muted-text)] text-center py-1">+ {{ getShiftsForDay(day).length - calendarShiftLimit }} další...</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="block md:hidden space-y-3 px-2 sm:px-4">
+                            <div v-for="day in calendar.daysInMonth" :key="day" @click="openDayDetailModal(getDateString(day))" class="bg-[var(--secondary-bg)] rounded-xl p-4 shadow-sm border cursor-pointer active:scale-[0.98] transition-transform" :class="[isToday(day) ? 'border-[var(--accent-color)]' : 'border-[var(--border-color)]', isPast(day) ? 'opacity-60' : '']">
+                                <div class="flex justify-between items-center mb-3"><div class="flex items-center gap-3"><span class="font-extrabold text-lg w-8 h-8 flex items-center justify-center rounded-full" :class="{'bg-[var(--accent-color)] text-white': isToday(day)}">{{day}}</span><span class="font-semibold text-sm text-[var(--muted-text)] capitalize">{{ getDayName(day) }}</span></div><button v-if="!isPast(day)" @click.stop="openAddModal(getDateString(day))" class="text-[var(--accent-color)] bg-[var(--accent-color)]/10 rounded-full w-8 h-8 flex items-center justify-center transition" title="Přidat směnu"><svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" /></svg></button></div>
+                                <div class="space-y-2">
+                                    <div v-if="getShiftsForDay(day).length > 0" v-for="shift in getShiftsForDay(day)" class="font-semibold p-2.5 rounded-lg flex items-center gap-3 text-sm" :style="{backgroundColor:shift.color, color:getContrastColor(shift.color)}"><div class="font-bold">{{formatTime(shift.start_time)}} - {{formatTime(shift.end_time)}}</div><div>{{shift.name}}</div><div class="ml-auto text-xs opacity-80" v-if="shift.note">{{shift.note}}</div></div>
+                                    <div v-else class="text-center text-sm text-[var(--muted-text)] py-4">Žádné směny</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div v-else-if="state.view==='dashboard'" key="dashboard" class="px-4 sm:px-6 lg:px-8">
+                        <div v-if="state.dashboardSummary" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 mb-8">
+                            <div class="dashboard-card p-6 text-center"><p class="text-sm font-medium text-[var(--muted-text)] uppercase tracking-wider">Směn v měsíci</p><p class="text-5xl font-extrabold mt-2 text-transparent bg-clip-text bg-gradient-to-br from-indigo-500 to-sky-400">{{state.dashboardSummary.total_shifts}}</p></div>
+                            <div class="dashboard-card p-6 text-center"><p class="text-sm font-medium text-[var(--muted-text)] uppercase tracking-wider">Hodin v měsíci</p><p class="text-5xl font-extrabold mt-2 text-transparent bg-clip-text bg-gradient-to-br from-lime-500 to-teal-400">{{ state.dashboardSummary.total_hours.toFixed(1) }}</p></div>
+                            <div class="bg-red-50 dark:bg-red-900/20 p-6 rounded-xl shadow-md text-center border border-red-200 dark:border-red-800/50 flex flex-col justify-center">
+                                <p class="text-sm font-medium text-red-500 dark:text-red-400 uppercase tracking-wider">Celkem smazaných směn</p>
+                                <p class="text-5xl font-extrabold mt-2 text-red-500">{{ state.dashboardSummary.total_deleted_shifts }}</p>
+                            </div>
+                        </div>
+                        <transition-group tag="div" name="card" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6" appear>
+                            <div v-for="stat in state.dashboardData" :key="stat.id" class="dashboard-card p-5 flex flex-col" :style="{'border-top':`4px solid ${stat.color}`}">
+                                <div class="flex items-start justify-between gap-4">
+                                    <div><div class="font-bold text-lg text-[var(--text-color)]">{{stat.name}}</div><div class="text-sm text-[var(--muted-text)] mb-4">{{stat.position}}</div></div>
+                                    <div class="relative w-20 h-20 flex-shrink-0"><svg class="progress-circle w-full h-full" viewBox="0 0 36 36"><path class="text-[var(--border-color)]" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" stroke-width="2.5"></path><path class="transition-all duration-500" :d="describeArc(18,18,15.9155,0,stat.load_percentage*3.6)" fill="none" :stroke="stat.color" stroke-width="2.5" stroke-linecap="round"></path></svg><div class="absolute inset-0 flex items-center justify-center font-bold text-lg" :style="{color:stat.color}">{{stat.load_percentage}}%</div></div>
+                                </div>
+                                <div class="mt-auto space-y-2 pt-4 border-t border-[var(--border-color)]">
+                                    <div class="flex justify-between items-center text-sm"><span class="text-[var(--muted-text)]">Odpracováno hodin</span><span class="font-semibold">{{stat.total_hours.toFixed(1)}} h</span></div>
+                                    <div class="flex justify-between items-center text-sm"><span class="text-[var(--muted-text)]">Počet směn</span><span class="font-semibold">{{stat.shift_count}}</span></div>
+                                    <div class="flex justify-between items-center text-sm" v-if="stat.deleted_shift_count > 0">
+                                        <span class="text-red-500 font-medium">Smazáno směn</span>
+                                        <span class="font-semibold text-red-500">{{stat.deleted_shift_count}}x</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </transition-group>
+                        <div v-if="!state.dashboardData || state.dashboardData.length===0" class="col-span-full text-center p-10 text-[var(--muted-text)] bg-[var(--secondary-bg)] rounded-xl">Pro tento měsíc nebyly nalezeny žádné směny.</div>
+                    </div>
+                </transition>
+            </div>
         </div>
-    </div>
+    </main>
     
-    <div id="toast" class="fixed top-5 right-5 bg-green-500 text-white py-2 px-5 rounded-lg shadow-lg opacity-0 -translate-y-10 transition-all duration-300 z-50">
-        <p id="toast-message"></p>
-    </div>
+    <transition name="modal-bg-enter-active">
+        <div v-if="modal.type" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-40" @click="closeModal"></div>
+    </transition>
+    <transition name="modal-panel">
+        <div v-if="modal.type" class="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div @click.stop class="bg-[var(--secondary-bg)] w-full flex flex-col pointer-events-auto rounded-xl shadow-2xl max-h-[90vh]" :class="modal.type === 'edit-add' ? 'max-w-md' : 'max-w-lg'">
+                <template v-if="modal.type === 'edit-add'">
+                    <div class="flex items-center justify-between p-4 sm:p-5 border-b border-[var(--border-color)]">
+                        <h2 class="text-lg font-bold">{{modal.isEdit?'Upravit směnu':'Přidat směnu'}}</h2>
+                        <button @click="closeModal" class="p-1 rounded-full hover:bg-black/10 dark:hover:bg-white/10 text-[var(--muted-text)]"><svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
+                    </div>
+                    <form @submit.prevent="handleFormSubmit" class="p-4 sm:p-5 space-y-4 overflow-y-auto">
+                        <div><label class="block text-sm font-medium text-[var(--muted-text)] mb-1">Zaměstnanec</label><select v-model="shiftForm.employee_id" required class="form-input" :disabled="modal.isEdit"><option disabled value="">Vyberte...</option><template v-for="(group,department) in groupedEmployees"><optgroup :label="department"><option v-for="emp in group" :key="emp.id" :value="emp.id">{{emp.name}}</option></optgroup></template></select></div>
+                        <div><label class="block text-sm font-medium text-[var(--muted-text)] mb-1">Datum</label><input type="date" v-model="shiftForm.date" required class="form-input"></div>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4"><div><label class="block text-sm font-medium text-[var(--muted-text)] mb-1">Od</label><input type="time" v-model="shiftForm.start_time" required class="form-input"></div><div><label class="block text-sm font-medium text-[var(--muted-text)] mb-1">Do</label><input type="time" v-model="shiftForm.end_time" required class="form-input"></div></div>
+                        <div><label class="block text-sm font-medium text-[var(--muted-text)] mb-1">Poznámka</label><textarea v-model="shiftForm.note" rows="3" class="form-input"></textarea></div>
+                    </form>
+                    <div class="p-4 sm:p-5 mt-auto flex flex-col-reverse sm:flex-row sm:justify-between items-center gap-3 border-t border-[var(--border-color)] bg-[var(--main-bg)] rounded-b-xl">
+                        <button type="button" v-if="modal.isEdit" @click="handleDelete" class="w-full sm:w-auto px-4 py-2.5 rounded-lg font-semibold text-white bg-[var(--danger-color)] hover:bg-[var(--danger-color-hover)] transition-colors">Smazat</button>
+                        <div class="flex flex-col sm:flex-row justify-end gap-3 w-full sm:w-auto"><button type="button" @click="closeModal" class="w-full sm:w-auto px-4 py-2.5 rounded-lg font-semibold bg-gray-200 hover:bg-gray-300 dark:bg-slate-600 dark:hover:bg-slate-500 transition-colors">Zrušit</button><button type="submit" @click="handleFormSubmit" class="w-full sm:w-auto px-4 py-2.5 rounded-lg font-semibold text-white bg-[var(--accent-color)] hover:bg-[var(--accent-color-hover)] transition-colors">Uložit</button></div>
+                    </div>
+                </template>
+                <template v-else-if="modal.type === 'day-detail'">
+                    <div class="flex items-center justify-between p-4 sm:p-5 border-b border-[var(--border-color)] flex-shrink-0">
+                        <div class="flex items-center gap-4">
+                            <h2 class="text-lg font-bold">Směny pro {{ modal.dayTitle }}</h2>
+                            <button v-if="!isPast(modal.dayDate.split('-')[2])" @click="addNewShiftFromDetail" class="text-[var(--accent-color)] bg-[var(--accent-color)]/10 hover:bg-[var(--accent-color)]/20 rounded-full w-8 h-8 flex items-center justify-center transition" title="Přidat novou směnu"><svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" /></svg></button>
+                        </div>
+                        <button @click="closeModal" class="p-1 rounded-full hover:bg-black/10 dark:hover:bg-white/10 text-[var(--muted-text)]" aria-label="Zavřít"><svg class="w-6 h-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg></button>
+                    </div>
+                    <div class="flex-grow overflow-y-auto p-4 sm:p-5 space-y-3 overscroll-contain">
+                        <div v-if="modal.shifts.length > 0" v-for="shift in modal.shifts" @click="openEditModal(shift.id)" class="cursor-pointer font-semibold p-3 rounded-lg flex items-center gap-4 transition-transform hover:scale-[1.02]" :style="{backgroundColor:shift.color, color:getContrastColor(shift.color)}"><div class="font-bold text-base">{{formatTime(shift.start_time)}} - {{formatTime(shift.end_time)}}</div><div class="text-lg">{{shift.name}}</div><div class="ml-auto text-sm opacity-80" v-if="shift.note">{{shift.note}}</div></div>
+                        <div v-else class="text-center text-lg text-[var(--muted-text)] py-10">Pro tento den nejsou naplánovány žádné směny.</div>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </transition>
 
-    <script>
-        // --- 4. KLIENTSKÝ JAVASCRIPT ---
+    <transition name="fade"><div v-if="toast.visible" class="fixed bottom-5 right-5 text-white py-2.5 px-6 rounded-lg shadow-lg text-sm font-semibold z-50 flex items-center gap-3" :class="{'bg-green-600':toast.type==='success','bg-red-600':toast.type==='error'}">{{toast.message}}</div></transition>
+</div>
 
-        // Předání dat z PHP do JS
-        const AppData = {
-            employees: <?php echo $employees_json; ?>
-        };
+<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+<script>
+const { createApp, ref, reactive, onMounted, computed, watch } = Vue;
+createApp({
+    setup() {
+        try {
+            // --- STATE MANAGEMENT ---
+            const state = reactive({
+                isLoading: true,
+                view: 'calendar',
+                currentDate: new Date(),
+                shifts: [],
+                employees: [],
+                dashboardData: [],
+                dashboardSummary: null,
+                calendarFilter: { employeeId: 'all' },
+                dashboardFilter: { employeeId: 'all' },
+            });
+            const todayISO = new Date().toISOString().split('T')[0];
+            const modal = reactive({ type: null, isEdit: false, shifts: [], dayTitle: '', dayDate: null });
+            const shiftForm = reactive({ id: null, employee_id: '', date: '', start_time: '11:00', end_time: '21:15', note: '' });
+            const toast = reactive({ visible: false, message: '', type: 'success', timeoutId: null });
+            const isDarkMode = ref(localStorage.getItem('theme') === 'dark');
+            const mobileMenuOpen = ref(false);
+            const calendarShiftLimit = ref(3);
 
-        document.addEventListener('DOMContentLoaded', () => {
-    
-            class ShiftPlannerApp {
-                constructor(rootElement, modalElement, appData) {
-                    this.appRoot = document.querySelector(rootElement);
-                    this.modal = document.querySelector(modalElement);
-                    this.employees = appData.employees;
-                    this.state = {
-                        shifts: [],
-                        currentDate: new Date(),
-                        isLoading: true,
-                    };
-                    this.todayISO = new Date().toISOString().split('T')[0];
-                    this.init();
+            // --- COMPUTED & WATCHERS ---
+            const activeFilter = computed(() => state.view === 'calendar' ? state.calendarFilter : state.dashboardFilter);
+            watch(() => activeFilter.value.employeeId, fetchData);
+
+            // --- API & DATA ---
+            async function apiRequest(action, method = 'GET', body = null, params = {}) {
+                const url = new URL(window.location.href.split('?')[0]);
+                url.searchParams.set('api', 'true'); url.searchParams.set('action', action);
+                for (const key in params) { url.searchParams.set(key, params[key]); }
+                try {
+                    const response = await fetch(url, { method, headers: body ? { 'Content-Type': 'application/json', 'Accept': 'application/json' } : { 'Accept': 'application/json' }, body: body ? JSON.stringify(body) : null });
+                    if (!response.ok) { let errorMsg = `Chyba serveru (${response.status})`; try { const data = await response.json(); errorMsg = data.error || errorMsg; } catch (e) { /* ignore */ } throw new Error(errorMsg); }
+                    return await response.json();
+                } catch (error) { showToast(error.message || 'Došlo k chybě sítě', 'error'); return null; }
+            }
+
+            async function fetchData() {
+                state.isLoading = true;
+                const year = state.currentDate.getFullYear();
+                const month = String(state.currentDate.getMonth() + 1).padStart(2, '0');
+                if (state.view === 'calendar') {
+                    const data = await apiRequest('get_initial_data', 'GET', null, { year, month, employeeId: activeFilter.value.employeeId });
+                    if (data) { state.shifts = data.shifts || []; if (state.employees.length === 0) state.employees = data.employees || []; }
+                } else if (state.view === 'dashboard') {
+                    const data = await apiRequest('get_dashboard_data', 'GET', null, { year, month, employeeId: activeFilter.value.employeeId });
+                    if (data) { state.dashboardData = data.employee_stats || []; state.dashboardSummary = data.summary || null; if (state.employees.length === 0) { const initialData = await apiRequest('get_initial_data', 'GET', null, { year, month }); if (initialData) { state.employees = initialData.employees || []; } } }
                 }
+                state.isLoading = false;
+            }
 
-                async init() {
-                    this.renderLayout();
-                    this.cacheDomElements();
-                    this.populateEmployeeSelect();
-                    this.addEventListeners();
-                    
-                    await this.fetchShifts();
-                    this.state.isLoading = false;
-                    this.renderCalendar();
-                }
-
-                renderLayout() {
-                    this.appRoot.innerHTML = `
-                        <header class="bg-white shadow-sm p-4 flex justify-between items-center print:hidden">
-                            <h1 class="text-xl font-bold text-blue-600">Plánovač Směn</h1>
-                            </header>
-                        <main class="main-container">
-                            <div id="notification-area" class="hidden"></div>
-                            <div class="max-w-7xl mx-auto bg-white p-4 sm:p-6 rounded-2xl shadow-lg">
-                                <div class="flex items-center justify-between mb-4 print:hidden">
-                                    <button id="prev-month" class="p-2 rounded-full hover:bg-gray-100 transition-colors">
-                                        <svg class="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
-                                    </button>
-                                    <h2 id="month-year" class="text-xl md:text-2xl font-bold text-gray-700 w-48 text-center"></h2>
-                                    <button id="next-month" class="p-2 rounded-full hover:bg-gray-100 transition-colors">
-                                        <svg class="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
-                                    </button>
-                                </div>
-                                <div class="grid grid-cols-7 gap-1 text-center font-semibold text-sm text-gray-500 mb-2">
-                                    <div>Po</div><div>Út</div><div>St</div><div>Čt</div><div>Pá</div><div>So</div><div>Ne</div>
-                                </div>
-                                <div id="calendar-grid" class="grid grid-cols-7 gap-1"></div>
-                            </div>
-                        </main>
-                    `;
-                }
-                
-                cacheDomElements() {
-                    this.calendarGrid = this.appRoot.querySelector('#calendar-grid');
-                    this.monthYearEl = this.appRoot.querySelector('#month-year');
-                    this.prevMonthBtn = this.appRoot.querySelector('#prev-month');
-                    this.nextMonthBtn = this.appRoot.querySelector('#next-month');
-                    this.shiftForm = this.modal.querySelector('#shift-form');
-                    this.modalTitle = this.modal.querySelector('#modal-title');
-                    this.employeeSelect = this.modal.querySelector('#name');
-                    this.shiftDateInput = this.modal.querySelector('#shift_date');
-                    this.shiftIdInput = this.modal.querySelector('#shift-id');
-                    this.noteInput = this.modal.querySelector('#note');
-                    this.saveBtn = this.modal.querySelector('#save-btn');
-                    this.cancelBtn = this.modal.querySelector('#cancel-btn');
-                    this.deleteBtn = this.modal.querySelector('#delete-btn-in-modal');
-                    this.saveBtnText = this.saveBtn.querySelector('#save-btn-text');
-                    this.saveSpinner = this.saveBtn.querySelector('#save-spinner');
-                    this.deleteBtnText = this.deleteBtn.querySelector('#delete-btn-text');
-                    this.deleteSpinner = this.deleteBtn.querySelector('#delete-spinner');
-                    this.toast = document.getElementById('toast');
-                    this.toastMessage = document.getElementById('toast-message');
-                }
-
-                addEventListeners() {
-                    this.prevMonthBtn.addEventListener('click', () => this.changeMonth(-1));
-                    this.nextMonthBtn.addEventListener('click', () => this.changeMonth(1));
-                    
-                    this.calendarGrid.addEventListener('click', e => {
-                        const addBtn = e.target.closest('.add-shift-plus');
-                        const shiftItem = e.target.closest('.shift-item');
-                        if (addBtn) {
-                            e.stopPropagation();
-                            this.openAddModal(addBtn.dataset.date);
-                        } else if (shiftItem) {
-                            e.stopPropagation();
-                            this.openEditModal(shiftItem.dataset.id);
-                        }
-                    });
-
-                    this.shiftForm.addEventListener('submit', e => this.handleFormSubmit(e));
-                    this.cancelBtn.addEventListener('click', () => this.toggleModal(false));
-                    this.deleteBtn.addEventListener('click', () => this.handleDelete());
-                    this.modal.addEventListener('click', (e) => {
-                        if (e.target === this.modal) this.toggleModal(false);
-                    });
-                }
-                
-                async apiCall(method, body = null) {
-                    // Voláme vždy stejný soubor, ale s různými metodami a parametry
-                    let url = '<?php echo basename($_SERVER["PHP_SELF"]); ?>';
-                    const options = {
-                        method,
-                        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-                    };
-                    
-                    if (method === 'GET') {
-                        // Přidáme parametr, aby PHP poznalo, že jde o API GET, ne o načtení stránky
-                        url += '?api=true';
-                    }
-
-                    if (body) {
-                        options.body = JSON.stringify(body);
-                    }
-                    
-                    try {
-                        const response = await fetch(url, options);
-                        const responseData = await response.json();
-                        if (!response.ok) {
-                            throw new Error(responseData.error || `HTTP chyba! Status: ${response.status}`);
-                        }
-                        return responseData;
-                    } catch (error) {
-                        console.error('API Chyba:', error);
-                        this.showToast(error.message, 'error');
-                        return null;
-                    }
-                }
-
-                async fetchShifts() {
-                    const data = await this.apiCall('GET');
-                    if (data) {
-                        this.state.shifts = data;
-                    }
-                }
-
-                renderCalendar() {
-                    this.calendarGrid.innerHTML = '';
-                    const { year, month } = { year: this.state.currentDate.getFullYear(), month: this.state.currentDate.getMonth() };
-                    this.monthYearEl.textContent = `${this.state.currentDate.toLocaleString('cs-CZ', { month: 'long' })} ${year}`;
-
-                    const firstDayOfMonth = new Date(year, month, 1).getDay();
-                    const daysInMonth = new Date(year, month + 1, 0).getDate();
-                    const dayOffset = (firstDayOfMonth === 0) ? 6 : firstDayOfMonth - 1;
-
-                    for (let i = 0; i < dayOffset; i++) {
-                        this.calendarGrid.insertAdjacentHTML('beforeend', `<div class="bg-gray-50 rounded-lg"></div>`);
-                    }
-
-                    for (let day = 1; day <= daysInMonth; day++) {
-                        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                        const isToday = this.todayISO === dateStr;
-                        const isPastDay = dateStr < this.todayISO;
-                        
-                        const dayShifts = this.state.shifts.filter(s => s.shift_date === dateStr);
-                        const shiftsHtml = dayShifts.map(shift => `
-                            <div data-id="${shift.id}" class="shift-item text-white text-xs font-semibold px-2 py-1 rounded-md mb-1" style="background-color: ${this.escapeHtml(shift.color)}; color: ${this.getContrastColor(shift.color)};" title="${this.escapeHtml(shift.name)}${shift.note ? ' - ' + this.escapeHtml(shift.note) : ''}">
-                                ${this.escapeHtml(shift.name)}
-                            </div>
-                        `).join('');
-
-                        const dayCellHtml = `
-                            <div class="calendar-day border border-gray-200 rounded-lg p-2 flex flex-col relative ${isToday ? 'bg-blue-50 border-blue-300' : 'bg-white'} ${isPastDay ? 'past-day' : ''}" data-date="${dateStr}">
-                                <div class="flex justify-between items-center mb-1">
-                                    <span class="font-bold text-sm ${isToday ? 'text-blue-600' : 'text-gray-700'}">${day}</span>
-                                    ${!isPastDay ? `
-                                        <button class="add-shift-plus text-blue-500 hover:text-blue-700 rounded-full w-6 h-6 flex items-center justify-center" data-date="${dateStr}" title="Přidat směnu">
-                                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
-                                        </button>`: ''}
-                                </div>
-                                <div class="shifts-container">${shiftsHtml}</div>
-                            </div>`;
-                        this.calendarGrid.insertAdjacentHTML('beforeend', dayCellHtml);
-                    }
-                }
-                
-                changeMonth(direction) {
-                    this.state.currentDate.setMonth(this.state.currentDate.getMonth() + direction);
-                    this.renderCalendar();
-                }
-                
-                populateEmployeeSelect() {
-                    this.employeeSelect.innerHTML = '<option value="" disabled selected>Vyberte zaměstnance...</option>';
-                    for (const department in this.employees) {
-                        const optgroup = document.createElement('optgroup');
-                        optgroup.label = department;
-                        this.employees[department].forEach(emp => {
-                            const option = document.createElement('option');
-                            option.value = emp.name;
-                            option.textContent = emp.name;
-                            optgroup.appendChild(option);
-                        });
-                        this.employeeSelect.appendChild(optgroup);
-                    }
-                }
-
-                toggleModal(show) {
-                    if (show) {
-                        this.modal.classList.remove('modal-hidden');
-                        this.modal.classList.add('modal-visible');
-                    } else {
-                        this.modal.classList.remove('modal-visible');
-                        this.modal.classList.add('modal-hidden');
-                    }
-                }
-
-                openAddModal(date) {
-                    this.shiftForm.reset();
-                    this.modalTitle.textContent = 'Přidat směnu';
-                    this.shiftIdInput.value = '';
-                    this.shiftDateInput.value = date;
-                    this.shiftDateInput.setAttribute('min', this.todayISO);
-                    this.employeeSelect.disabled = false;
-                    this.deleteBtn.classList.add('hidden');
-                    this.toggleLoading(this.saveBtn, false);
-                    this.toggleLoading(this.deleteBtn, false);
-                    this.toggleModal(true);
-                }
-
-                openEditModal(id) {
-                    const shift = this.state.shifts.find(s => s.id == id);
-                    if (!shift) return;
-                    this.shiftForm.reset();
-                    this.modalTitle.textContent = 'Upravit směnu';
-                    this.shiftIdInput.value = shift.id;
-                    this.shiftDateInput.value = shift.shift_date;
-                    this.shiftDateInput.setAttribute('min', this.todayISO);
-                    this.employeeSelect.value = shift.name;
-                    this.employeeSelect.disabled = true;
-                    this.noteInput.value = shift.note;
-                    this.deleteBtn.classList.remove('hidden');
-                    this.toggleLoading(this.saveBtn, false);
-                    this.toggleLoading(this.deleteBtn, false);
-                    this.toggleModal(true);
-                }
-
-                async handleFormSubmit(e) {
-                    e.preventDefault();
-                    const formData = new FormData(this.shiftForm);
-                    const data = Object.fromEntries(formData.entries());
-                    const id = data.id;
-
-                    this.toggleLoading(this.saveBtn, true, 'Ukládám...');
-                    let result;
-                    if (id) {
-                        result = await this.apiCall('PUT', data);
-                    } else {
-                        result = await this.apiCall('POST', data);
-                    }
-                    this.toggleLoading(this.saveBtn, false, 'Uložit');
-                    
-                    if (result) {
-                        this.showToast(result.message || 'Operace byla úspěšná.', 'success');
-                        this.toggleModal(false);
-                        await this.fetchShifts();
-                        this.renderCalendar();
-                    }
-                }
-                
-                async handleDelete() {
-                    const id = this.shiftIdInput.value;
-                    if (!id || !confirm('Opravdu si přejete smazat tuto směnu?')) return;
-                    
-                    this.toggleLoading(this.deleteBtn, true, 'Mažu...');
-                    const result = await this.apiCall('DELETE', { id });
-                    this.toggleLoading(this.deleteBtn, false, 'Smazat');
-
-                    if (result) {
-                        this.showToast(result.message || 'Směna byla smazána.', 'success');
-                        this.toggleModal(false);
-                        this.state.shifts = this.state.shifts.filter(s => s.id != id);
-                        this.renderCalendar();
-                    }
-                }
-                
-                toggleLoading(button, isLoading, loadingText = 'Ukládám...') {
-                    const textElement = button.querySelector('span');
-                    const spinnerElement = button.querySelector('.loading-spinner');
-                    button.disabled = isLoading;
-                    if (isLoading) {
-                        textElement.textContent = loadingText;
-                        spinnerElement.classList.remove('hidden');
-                    } else {
-                        textElement.textContent = button.id.includes('delete') ? 'Smazat' : 'Uložit';
-                        spinnerElement.classList.add('hidden');
-                    }
-                }
-
-                showToast(message, type = 'success') {
-                    this.toastMessage.textContent = message;
-                    this.toast.className = 'fixed top-5 right-5 text-white py-2 px-5 rounded-lg shadow-lg opacity-100 translate-y-0 transition-all duration-300 z-50';
-                    this.toast.classList.add(type === 'error' ? 'bg-red-600' : 'bg-green-600');
-
-                    setTimeout(() => {
-                        this.toast.classList.replace('opacity-100', 'opacity-0');
-                        this.toast.classList.replace('translate-y-0', '-translate-y-10');
-                    }, 3000);
-                }
-                
-                escapeHtml(unsafe) {
-                    if (unsafe === null || unsafe === undefined) return '';
-                    return unsafe.toString()
-                         .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-                         .replace(/"/g, "&quot;").replace(/'/g, "&#039;");
-                }
-                
-                getContrastColor(hexcolor){
-                    if (hexcolor.startsWith('#')) {
-                        hexcolor = hexcolor.slice(1);
-                    }
-                    const r = parseInt(hexcolor.substr(0,2),16);
-                    const g = parseInt(hexcolor.substr(2,2),16);
-                    const b = parseInt(hexcolor.substr(4,2),16);
-                    const yiq = ((r*299)+(g*587)+(b*114))/1000;
-                    return (yiq >= 128) ? '#000000' : '#FFFFFF';
+            // --- USER ACTIONS ---
+            async function handleDelete() {
+                if (!confirm('Opravdu si přejete smazat tuto směnu? Zaměstnanci se přičte bod za smazanou směnu.')) return;
+                const result = await apiRequest('delete_shift', 'POST', { id: shiftForm.id });
+                if (result) {
+                    showToast(result.message, 'success');
+                    closeModal();
+                    await fetchData();
                 }
             }
-            new ShiftPlannerApp('#app-root', '#shift-modal', AppData);
-        });
-    </script>
+            
+            async function handleFormSubmit() {
+                const body = { ...shiftForm, start_time: `${shiftForm.date} ${shiftForm.start_time}:00`, end_time: `${shiftForm.date} ${shiftForm.end_time}:00` };
+                const result = await apiRequest(body.id ? 'update_shift' : 'create_shift', 'POST', body);
+                if (result) { showToast(result.message, 'success'); closeModal(); await fetchData(); }
+            }
+
+            // --- UTILITY & HELPER FUNCTIONS ---
+            const monthYear = computed(() => state.currentDate.toLocaleString('cs-CZ', { month: 'long', year: 'numeric' }));
+            const groupedEmployees = computed(() => state.employees.reduce((acc, emp) => { (acc[emp.position] = acc[emp.position] || []).push(emp); return acc; }, {}));
+            const calendar = computed(() => { const d = new Date(state.currentDate); const y = d.getFullYear(), m = d.getMonth(); const dayOffset = (new Date(y, m, 1).getDay() + 6) % 7; const daysInMonth = new Date(y, m + 1, 0).getDate(); return { y, m, daysInMonth, dayOffset }; });
+            const getDateString = (day) => `${calendar.value.y}-${String(calendar.value.m + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+            const getShiftsForDay = (day) => state.shifts.filter(s => s.start_time.startsWith(getDateString(day)));
+            const isToday = (day) => todayISO === getDateString(day);
+            const isPast = (day) => todayISO > getDateString(day);
+            function setView(newView) { if (state.view === newView) return; state.view = newView; const url = new URL(window.location); url.searchParams.set('view', newView); window.history.pushState({}, '', url); fetchData(); }
+            async function changeMonth(dir) { state.currentDate = new Date(state.currentDate.setMonth(state.currentDate.getMonth() + dir, 1)); await fetchData(); }
+            function closeModal() { modal.type = null; }
+            function openAddModal(date) { Object.assign(shiftForm, { id: null, employee_id: '', date, start_time: '11:00', end_time: '21:15', note: '' }); modal.isEdit = false; modal.type = 'edit-add'; }
+            function openEditModal(id) { const shift = state.shifts.find(s => s.id == id); if (!shift) return; Object.assign(shiftForm, { id: shift.id, employee_id: shift.employee_id, date: shift.start_time.split(' ')[0], start_time: shift.start_time.split(' ')[1].substring(0, 5), end_time: shift.end_time.split(' ')[1].substring(0, 5), note: shift.note }); modal.isEdit = true; modal.type = 'edit-add'; }
+            function openDayDetailModal(dateStr) { const day = parseInt(dateStr.split('-')[2], 10); modal.shifts = getShiftsForDay(day); modal.dayTitle = `${day}. ${state.currentDate.toLocaleString('cs-CZ', { month: 'long' })}`; modal.dayDate = dateStr; modal.type = 'day-detail'; }
+            function addNewShiftFromDetail() { openAddModal(modal.dayDate); }
+            function showToast(message, type = 'success') { toast.message = message; toast.type = type; toast.visible = true; clearTimeout(toast.timeoutId); toast.timeoutId = setTimeout(() => { toast.visible = false; }, 3000); }
+            function toggleDarkMode() { isDarkMode.value = !isDarkMode.value; localStorage.setItem('theme', isDarkMode.value ? 'dark' : 'light'); document.documentElement.classList.toggle('dark', isDarkMode.value); }
+            const getContrastColor = (hex) => { if (!hex) return '#000'; const r = parseInt(hex.substr(1, 2), 16), g = parseInt(hex.substr(3, 2), 16), b = parseInt(hex.substr(5, 2), 16); return ((r * 299) + (g * 587) + (b * 114)) / 1000 >= 150 ? '#020617' : '#FFFFFF'; };
+            const getShiftTitle = (s) => `${s.name}\n${formatTime(s.start_time)} - ${formatTime(s.end_time)}\nPoznámka: ${s.note || 'Žádná'}`;
+            const formatTime = (dt) => new Date(dt).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' });
+            const describeArc = (x, y, radius, startAngle, endAngle) => { if (endAngle >= 360) { endAngle = 359.99; } const polarToCartesian = (centerX, centerY, radius, angleInDegrees) => { const angleInRadians = (angleInDegrees - 90) * Math.PI / 180.0; return { x: centerX + (radius * Math.cos(angleInRadians)), y: centerY + (radius * Math.sin(angleInRadians)) }; }; const start = polarToCartesian(x, y, radius, endAngle); const end = polarToCartesian(x, y, radius, startAngle); const largeArcFlag = endAngle - startAngle <= 180 ? "0" : "1"; return ["M", start.x, start.y, "A", radius, radius, 0, largeArcFlag, 0, end.x, end.y].join(" "); };
+            const getDayName = (day) => { const date = new Date(calendar.value.y, calendar.value.m, day); return date.toLocaleDateString('cs-CZ', { weekday: 'long' }); };
+            function exportToXLS() { const { year, month } = { year: state.currentDate.getFullYear(), month: state.currentDate.getMonth() + 1 }; const employeeId = activeFilter.value.employeeId; window.open(`?api=true&action=export_xls&year=${year}&month=${month}&employeeId=${employeeId}`, '_blank'); }
+            function exportToPDF() { const { year, month } = { year: state.currentDate.getFullYear(), month: state.currentDate.getMonth() + 1 }; const employeeId = activeFilter.value.employeeId; window.open(`?api=true&action=get_print_view&year=${year}&month=${month}&employeeId=${employeeId}`, '_blank'); }
+            
+            // --- LIFECYCLE HOOK ---
+            onMounted(() => {
+                if (isDarkMode.value) { document.documentElement.classList.add('dark'); }
+                const urlParams = new URLSearchParams(window.location.search);
+                const view = urlParams.get('view') || 'calendar';
+                state.view = ['calendar', 'dashboard'].includes(view) ? view : 'calendar';
+                fetchData(); 
+            });
+
+            return { state, modal, shiftForm, toast, monthYear, calendar, isToday, isPast, isDarkMode, groupedEmployees, activeFilter, mobileMenuOpen, calendarShiftLimit, changeMonth, openAddModal, openEditModal, openDayDetailModal, closeModal, handleFormSubmit, handleDelete, getShiftsForDay, getDateString, showToast, toggleDarkMode, getContrastColor, getShiftTitle, formatTime, exportToXLS, exportToPDF, describeArc, getDayName, addNewShiftFromDetail, setView };
+
+        } catch (e) {
+            console.error("Chyba při inicializaci Vue aplikace:", e);
+            const appDiv = document.getElementById('app');
+            if (appDiv) {
+                appDiv.innerHTML = `<div style="padding: 2rem; text-align: center; font-family: sans-serif; background-color: #fffbe6; border: 1px solid #facc15; color: #713f12; border-radius: 0.5rem; margin: 2rem;">
+                    <h1 style="font-size: 1.5rem; font-weight: bold; margin-bottom: 0.5rem;">Chyba při inicializaci aplikace</h1>
+                    <p>Aplikaci se nepodařilo spustit. Zkuste prosím obnovit stránku. Pokud problém přetrvává, zkontrolujte konzoli prohlížeče (F12) pro více detailů.</p>
+                    <pre style="margin-top: 1rem; padding: 1rem; background-color: #f3f4f6; border-radius: 0.25rem; text-align: left; white-space: pre-wrap; word-break: break-all;">${e.stack}</pre>
+                </div>`;
+            }
+            return {};
+        }
+    }
+}).mount('#app');
+</script>
 </body>
 </html>
