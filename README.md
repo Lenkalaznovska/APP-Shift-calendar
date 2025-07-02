@@ -5,10 +5,9 @@ Built using **Vue.js 3**, **Tailwind CSS**, and a **PHP + MySQL/MariaDB** backen
 
 👉 [Live Demo](http://smeny.wz.cz:8080)
 
-![image](https://github.com/user-attachments/assets/2faa502b-dcff-4e69-be92-016f771a3574)
-![image](https://github.com/user-attachments/assets/f6bc7bc9-994c-4246-90c8-0f4d5dd858ad)
-![image](https://github.com/user-attachments/assets/41732f91-e06a-4b4e-ad67-aac8282b58ca)
-![image](https://github.com/user-attachments/assets/38afca46-1d0e-44d1-b7bb-dd296f611642)
+![image](https://github.com/user-attachments/assets/17030486-e0c9-4e75-8266-b56558a42cc2)
+![image](https://github.com/user-attachments/assets/facdf258-9afb-4253-b1ed-54a791f1c6f1) ![image](https://github.com/user-attachments/assets/bf704c9b-a5ba-4d04-9092-15d76368e039)
+![image](https://github.com/user-attachments/assets/ad6925d1-645f-4e5d-b701-886f756a802c)
 
 ---
 
