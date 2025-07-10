@@ -30,12 +30,12 @@ function setupDatabase(PDO $pdo): void
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;";
         $pdo->exec($sql);
         echo "Struktura tabulek úspěšně vytvořena.\n";
-        $pdo->exec("INSERT INTO `departments` (`id`, `name`) VALUES (1, 'Kuchyně'), (2, 'Kurýři'), (3, 'Bar'), (4, 'Ostatní výpomoc');");
+        $pdo->exec("INSERT INTO `departments` (`id`, `name`) VALUES (1, 'Kuchyně'), (2, 'Kurýři'), (3, 'Bar'), (4, 'Ostatní');");
         $pdo->exec("
             INSERT INTO `employees` (`name`, `department_id`, `color`) VALUES
             ('Hanka', 1, '#FFEB3B'), ('Marie', 1, '#FF7F80'), ('Martina', 1, '#4CAF50'), ('Martin', 1, '#1E00FF'), ('Renata', 1, '#808080'),
             ('Jirka', 2, '#32CD32'), ('Katka - Kurýr', 2, '#FF69B4'), ('Michaela', 2, '#00BFFF'), ('Pavel', 2, '#8A2BE2'), ('Tomáš', 2, '#FF4500'),
-            ('Kristián', 2, '#1f7a39'), ('Jiřina', 3, '#DC143C'), ('Katka - Bar', 3, '#FFA450'), ('Výpomoc', 4, '#f97316');");
+            ('Kristián', 2, '#1f7a39'), ('Jiřina', 3, '#DC143C'), ('Katka - Bar', 3, '#FFA450'), ('Výpomoc', 4, '#6b7280');");
         echo "Data vložena.\nNASTAVENÍ DOKONČENO.";
     } catch (PDOException $e) {
         http_response_code(500);
@@ -73,11 +73,11 @@ class ApiController
                 case 'update_shift': $this->updateShift($input); break;
                 case 'delete_shift': $this->deleteShift($input); break;
                 case 'get_dashboard_data': $this->getDashboardData($_GET['year'] ?? date('Y'), $_GET['month'] ?? date('m'), $_GET['employeeId'] ?? 'all'); break;
-                case 'export_xls': $this->exportXls($_GET['year'] ?? date('Y'), $_GET['month'] ?? date('m'), $_GET['employeeId'] ?? 'all'); break;
                 case 'get_print_view': $this->getPrintableView($_GET['year'] ?? date('Y'), $_GET['month'] ?? date('m'), $_GET['employeeId'] ?? 'all'); break;
-                default: $this->sendResponse(404, ['error' => 'Akce nebyla nalezena.']);
+                case 'get_dashboard_print_view': $this->getDashboardPrintableView($_GET['year'] ?? date('Y'), $_GET['month'] ?? date('m')); break;
+                default: $this->sendResponse(404, ['error' => 'Požadovaná akce nebyla nalezena.']);
             }
-        } catch (Exception $e) { error_log("API Error: " . $e->getMessage()); $this->sendResponse(500, ['error' => 'Interní chyba serveru: ' . $e->getMessage()]); }
+        } catch (Exception $e) { error_log("API Error: " . $e->getMessage()); $this->sendResponse(500, ['error' => 'Došlo k neočekávané chybě na serveru.']); }
     }
     private function fetchShifts(string $year, string $month, string $employeeId = 'all'): array
     {
@@ -91,21 +91,118 @@ class ApiController
     }
     private function fetchEmployees(): array { return $this->pdo->query("SELECT e.id, e.name, e.color, d.name as position FROM employees e JOIN departments d ON e.department_id = d.id WHERE e.is_active = TRUE ORDER BY d.id, e.name")->fetchAll(); }
     public function getInitialData(string $year, string $month, string $employeeId): void { $this->sendResponse(200, ['shifts' => $this->fetchShifts($year, $month, $employeeId), 'employees' => $this->fetchEmployees()]); }
-    public function createShift(array $data): void { $this->validateData($data, ['employee_id', 'start_time', 'end_time']); $sql = "INSERT INTO shifts (employee_id, start_time, end_time, note) VALUES (:employee_id, :start_time, :end_time, :note)"; $this->pdo->prepare($sql)->execute([':employee_id' => $data['employee_id'], ':start_time' => $data['start_time'], ':end_time' => $data['end_time'], ':note' => $data['note'] ?? '']); $this->sendResponse(201, ['id' => (int)$this->pdo->lastInsertId(), 'message' => 'Směna úspěšně vytvořena.']); }
-    public function updateShift(array $data): void { $this->validateData($data, ['id', 'start_time', 'end_time']); $sql = "UPDATE shifts SET start_time = :start_time, end_time = :end_time, note = :note WHERE id = :id AND deleted_at IS NULL"; $this->pdo->prepare($sql)->execute([':id' => $data['id'], ':start_time' => $data['start_time'], ':end_time' => $data['end_time'], ':note' => $data['note'] ?? '']); $this->sendResponse(200, ['id' => (int)$data['id'], 'message' => 'Směna aktualizována.']); }
-    public function deleteShift(array $data): void { $this->validateData($data, ['id']); $sql = "UPDATE shifts SET deleted_at = CURRENT_TIMESTAMP WHERE id = :id"; $this->pdo->prepare($sql)->execute([':id' => $data['id']]); $this->sendResponse(200, ['id' => (int)$data['id'], 'message' => 'Směna smazána.']); }
-
-    public function getDashboardData(string $year, string $month, string $employeeId = 'all'): void
+    
+    private function hasOverlappingShift(int $employee_id, string $start_time, string $end_time, ?int $exclude_shift_id = null): bool
     {
+        $sql = "SELECT COUNT(*) FROM shifts WHERE employee_id = :employee_id AND deleted_at IS NULL AND start_time < :end_time AND end_time > :start_time";
+        $params = [
+            ':employee_id' => $employee_id,
+            ':start_time' => $start_time,
+            ':end_time' => $end_time,
+        ];
+
+        if ($exclude_shift_id !== null) {
+            $sql .= " AND id != :exclude_shift_id";
+            $params[':exclude_shift_id'] = $exclude_shift_id;
+        }
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->fetchColumn() > 0;
+    }
+
+    public function createShift(array $data): void
+    {
+        $this->validateData($data, ['employee_id', 'start_time', 'end_time']);
+        $shiftDate = new DateTime($data['start_time']);
+        $today = new DateTime('today');
+        
+        if ($shiftDate < $today) {
+            $this->sendResponse(403, ['error' => 'Směny nelze vytvářet ve dnech, které již uplynuly.']);
+        }
+        
+        if ($this->hasOverlappingShift($data['employee_id'], $data['start_time'], $data['end_time'])) {
+            $this->sendResponse(409, ['error' => 'Zaměstnanec má v tomto čase již naplánovanou jinou směnu.']);
+        }
+
+        $sql = "INSERT INTO shifts (employee_id, start_time, end_time, note) VALUES (:employee_id, :start_time, :end_time, :note)";
+        $this->pdo->prepare($sql)->execute([':employee_id' => $data['employee_id'], ':start_time' => $data['start_time'], ':end_time' => $data['end_time'], ':note' => $data['note'] ?? '']);
+        $this->sendResponse(201, ['id' => (int)$this->pdo->lastInsertId(), 'message' => 'Směna byla úspěšně vytvořena.']);
+    }
+
+    public function updateShift(array $data): void
+    {
+        $this->validateData($data, ['id', 'start_time', 'end_time']);
+        
+        $stmt = $this->pdo->prepare("SELECT start_time FROM shifts WHERE id = :id AND deleted_at IS NULL");
+        $stmt->execute([':id' => $data['id']]);
+        $shift = $stmt->fetch();
+        if (!$shift) {
+            $this->sendResponse(404, ['error' => 'Požadovaná směna pro úpravu nebyla nalezena.']);
+        }
+
+        $today = new DateTime('today');
+        $originalShiftDate = new DateTime($shift['start_time']);
+        $newShiftDate = new DateTime($data['start_time']);
+
+        if ($originalShiftDate < $today) {
+            $this->sendResponse(403, ['error' => 'Směny z minulých dnů není možné upravovat.']);
+        }
+        if ($newShiftDate < $today) {
+            $this->sendResponse(403, ['error' => 'Směnu nelze přesunout do minulosti.']);
+        }
+
+        if ($this->hasOverlappingShift($data['employee_id'], $data['start_time'], $data['end_time'], $data['id'])) {
+            $this->sendResponse(409, ['error' => 'Zaměstnanec má v tomto čase již naplánovanou jinou směnu.']);
+        }
+
+        $sql = "UPDATE shifts SET start_time = :start_time, end_time = :end_time, note = :note WHERE id = :id";
+        $this->pdo->prepare($sql)->execute([':id' => $data['id'], ':start_time' => $data['start_time'], ':end_time' => $data['end_time'], ':note' => $data['note'] ?? '']);
+        $this->sendResponse(200, ['id' => (int)$data['id'], 'message' => 'Směna byla úspěšně aktualizována.']);
+    }
+
+    public function deleteShift(array $data): void
+    {
+        $this->validateData($data, ['id']);
+        $stmt = $this->pdo->prepare("SELECT start_time FROM shifts WHERE id = :id AND deleted_at IS NULL");
+        $stmt->execute([':id' => $data['id']]);
+        $shift = $stmt->fetch();
+
+        if (!$shift) {
+            $this->sendResponse(404, ['error' => 'Směna nebyla nalezena nebo již byla smazána.']);
+            return;
+        }
+
+        $shiftDate = new DateTime($shift['start_time']);
+        $today = new DateTime('today');
+        
+        if ($shiftDate < $today) {
+            $this->sendResponse(403, ['error' => 'Směny z minulých dnů není možné smazat.']);
+            return;
+        }
+
+        $sevenDaysFromNow = (new DateTime())->modify('+7 days');
+        if ($shiftDate > $sevenDaysFromNow) {
+            // Tvrdé smazání - pokud je směna více než 7 dní v budoucnu
+            $sql = "DELETE FROM shifts WHERE id = :id";
+            $message = 'Směna byla přeplánována (zcela smazána).';
+        } else {
+            // Měkké smazání - zaznamená se do statistik
+            $sql = "UPDATE shifts SET deleted_at = CURRENT_TIMESTAMP WHERE id = :id";
+            $message = 'Směna byla úspěšně smazána (vykázáno ve statistikách).';
+        }
+        
+        $this->pdo->prepare($sql)->execute([':id' => $data['id']]);
+        $this->sendResponse(200, ['id' => (int)$data['id'], 'message' => $message]);
+    }
+
+    private function getDashboardStats(string $year, string $month): array {
         $targetHours = 160;
         $startOfMonth = "{$year}-{$month}-01 00:00:00";
         $endOfMonth = date("Y-m-t 23:59:59", strtotime($startOfMonth));
 
-        $employeesQuery = "SELECT e.id, e.name, e.color, d.name as position FROM employees e JOIN departments d ON e.department_id = d.id WHERE e.is_active = TRUE";
-        $empParams = [];
-        if ($employeeId !== 'all' && is_numeric($employeeId)) { $employeesQuery .= " AND e.id = :employeeId"; $empParams[':employeeId'] = $employeeId; }
-        $employeesQuery .= " ORDER BY e.name ASC";
-        $stmt = $this->pdo->prepare($employeesQuery); $stmt->execute($empParams);
+        $employeesQuery = "SELECT e.id, e.name, e.color, d.name as position FROM employees e JOIN departments d ON e.department_id = d.id WHERE e.is_active = TRUE ORDER BY e.name ASC";
+        $stmt = $this->pdo->query($employeesQuery);
         $employeeStats = $stmt->fetchAll();
 
         $summary = ['total_shifts' => 0, 'total_hours' => 0, 'total_deleted_shifts' => 0];
@@ -133,34 +230,98 @@ class ApiController
             $summary['total_deleted_shifts'] += $stat['deleted_shift_count'];
         }
 
-        usort($employeeStats, fn ($a, $b) => $b['total_hours'] <=> $a['total_hours']);
+        usort($employeeStats, fn ($a, $b) => ($b['total_hours'] <=> $a['total_hours']) ?: ($a['name'] <=> $b['name']));
         $summary['total_hours'] = round($summary['total_hours'], 1);
-        $this->sendResponse(200, ['summary' => $summary, 'employee_stats' => $employeeStats]);
+        
+        return ['summary' => $summary, 'employee_stats' => $employeeStats];
     }
+    
+    public function getDashboardData(string $year, string $month, string $employeeId = 'all'): void
+    {
+        $data = $this->getDashboardStats($year, $month);
+        
+        if ($employeeId !== 'all' && is_numeric($employeeId)) {
+            $data['employee_stats'] = array_values(array_filter($data['employee_stats'], fn($e) => $e['id'] == $employeeId));
+        }
 
-    public function exportXls(string $year, string $month, string $employeeId): void { ob_end_clean(); $shifts = $this->fetchShifts($year, $month, $employeeId); header('Content-Type: application/vnd.ms-excel; charset=utf-8'); header('Content-Disposition: attachment; filename="smeny-' . $year . '-' . $month . '.xls"'); echo "\xEF\xBB\xBF"; $output = fopen('php://output', 'w'); fputcsv($output, ['Datum', 'Zaměstnanec', 'Pozice', 'Od', 'Do', 'Celkem hodin', 'Poznámka'], "\t"); foreach ($shifts as $s) { $startTime = new DateTime($s['start_time']); $endTime = new DateTime($s['end_time']); $duration = $startTime->diff($endTime); $hours = $duration->h + ($duration->i / 60); fputcsv($output, [date('d.m.Y', strtotime($s['start_time'])), $s['name'], $s['position'], date('H:i', strtotime($s['start_time'])), date('H:i', strtotime($s['end_time'])), number_format($hours, 2), $s['note']], "\t"); } fclose($output); exit; }
+        $this->sendResponse(200, $data);
+    }
     
     public function getPrintableView(string $year, string $month, string $employeeId): void
     {
         ob_end_clean();
         $shifts = $this->fetchShifts($year, $month, $employeeId);
-        $monthName = mb_convert_case(date('F', strtotime("{$year}-{$month}-01")), MB_CASE_TITLE, "UTF-8");
-        echo <<<HTML
+        $timestamp = strtotime("{$year}-{$month}-01");
+        $monthNumber = date('n', $timestamp);
+        $czechMonths = [1 => 'Leden', 2 => 'Únor', 3 => 'Březen', 4 => 'Duben', 5 => 'Květen', 6 => 'Červen', 7 => 'Červenec', 8 => 'Srpen', 9 => 'Září', 10 => 'Říjen', 11 => 'Listopad', 12 => 'Prosinec'];
+        $monthName = $czechMonths[$monthNumber];
+        
+        $title = "Přehled směn - {$monthName} {$year}";
+        $tableRows = '';
+        foreach ($shifts as $s) {
+            $startTime = new DateTime($s['start_time']);
+            $endTime = new DateTime($s['end_time']);
+            $duration = $startTime->diff($endTime);
+            $hours = number_format($duration->h + ($duration->i / 60), 2);
+            $tableRows .= "<tr><td>" . date('d.m.Y', strtotime($s['start_time'])) . "</td><td>" . htmlspecialchars($s['name']) . "</td><td>" . htmlspecialchars($s['position']) . "</td><td>" . date('H:i', strtotime($s['start_time'])) . "</td><td>" . date('H:i', strtotime($s['end_time'])) . "</td><td>" . $hours . "</td><td>" . htmlspecialchars($s['note']) . "</td></tr>";
+        }
+
+        echo $this->generatePrintHTML($title, '<th>Datum</th><th>Zaměstnanec</th><th>Pozice</th><th>Od</th><th>Do</th><th>Hodin</th><th>Poznámka</th>', $tableRows);
+        exit;
+    }
+    
+    public function getDashboardPrintableView(string $year, string $month): void
+    {
+        ob_end_clean();
+        $data = $this->getDashboardStats($year, $month);
+        $timestamp = strtotime("{$year}-{$month}-01");
+        $monthNumber = date('n', $timestamp);
+        $czechMonths = [1 => 'Leden', 2 => 'Únor', 3 => 'Březen', 4 => 'Duben', 5 => 'Květen', 6 => 'Červen', 7 => 'Červenec', 8 => 'Srpen', 9 => 'Září', 10 => 'Říjen', 11 => 'Listopad', 12 => 'Prosinec'];
+        $monthName = $czechMonths[$monthNumber];
+
+        $title = "Měsíční přehled - {$monthName} {$year}";
+        
+        $summaryRows = "
+            <tr><td>Celkem směn v měsíci</td><td><strong>{$data['summary']['total_shifts']}</strong></td></tr>
+            <tr><td>Celkem hodin v měsíci</td><td><strong>{$data['summary']['total_hours']}</strong></td></tr>
+            <tr style='color: #DC2626;'><td>Celkem smazaných směn</td><td><strong>{$data['summary']['total_deleted_shifts']}</strong></td></tr>
+        ";
+        $summaryTable = "<h2>Souhrn</h2><table class='summary'>{$summaryRows}</table><br>";
+
+        $tableHeader = '<th>Jméno</th><th>Pozice</th><th>Odpracováno Hodin</th><th>Počet Směn</th><th>Smazáno Směn</th>';
+        $tableRows = '';
+        foreach ($data['employee_stats'] as $stat) {
+             $tableRows .= "<tr>
+                 <td>" . htmlspecialchars($stat['name']) . "</td>
+                 <td>" . htmlspecialchars($stat['position']) . "</td>
+                 <td>" . number_format($stat['total_hours'], 1) . "</td>
+                 <td>{$stat['shift_count']}</td>
+                 <td" . ($stat['deleted_shift_count'] > 0 ? " style='color:#DC2626; font-weight:bold;'" : "") . ">{$stat['deleted_shift_count']}</td>
+               </tr>";
+        }
+        
+        echo $this->generatePrintHTML($title, $tableHeader, $tableRows, $summaryTable);
+        exit;
+    }
+
+    private function generatePrintHTML(string $title, string $tableHeader, string $tableRows, ?string $preTableContent = null): string {
+        return <<<HTML
 <!DOCTYPE html>
 <html lang='cs'>
 <head>
     <meta charset='UTF-8'>
-    <title>Tisk směn - {$monthName} {$year}</title>
+    <title>{$title}</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
         body{font-family:'Inter',sans-serif;margin:0;padding:0;background-color:#f0f0f0;color:#111;}
         .page{width:210mm;min-height:297mm;padding:20mm;margin:10mm auto;background:white;box-shadow:0 0 5px rgba(0,0,0,0.1);}
         .header{text-align:center;border-bottom:2px solid #ccc;padding-bottom:10px;margin-bottom:20px;}
         .header h1{margin:0;font-size:24pt;}
-        .header p{margin:5px 0 0;color:#555;font-size:14pt;}
-        table{width:100%;border-collapse:collapse;font-size:10pt;}
+        h2 { font-size: 14pt; margin-top: 20px; border-bottom: 1px solid #eee; padding-bottom: 5px; }
+        table{width:100%;border-collapse:collapse;font-size:10pt;margin-top:10px;}
         th,td{border:1px solid #ddd;padding:8px;text-align:left;}
         th{background-color:#f9f9f9;font-weight:600;}
+        .summary td { border: 1px solid #eee; }
         .print-info{text-align:center;margin-top:20px;padding:10px;background-color:#eef;border:1px solid #cce;display:block;border-radius:5px;}
         @media print{body{margin:0;padding:0;background-color:white;}.page{box-shadow:none;margin:0;width:auto;min-height:auto;padding:0;}.print-info{display:none;}}
     </style>
@@ -168,33 +329,21 @@ class ApiController
 <body>
 <div class="page">
     <div class="header">
-        <h1>Přehled směn</h1>
-        <p>{$monthName} {$year}</p>
+        <h1>{$title}</h1>
     </div>
     <div class="print-info">Pro uložení do PDF použijte funkci tisku vašeho prohlížeče (Ctrl+P) a vyberte "Uložit jako PDF".</div>
+    {$preTableContent}
     <table>
-        <thead>
-            <tr><th>Datum</th><th>Zaměstnanec</th><th>Pozice</th><th>Od</th><th>Do</th><th>Hodin</th><th>Poznámka</th></tr>
-        </thead>
-        <tbody>
-HTML;
-        foreach ($shifts as $s) {
-            $startTime = new DateTime($s['start_time']);
-            $endTime = new DateTime($s['end_time']);
-            $duration = $startTime->diff($endTime);
-            $hours = $duration->h + ($duration->i / 60);
-            echo "<tr><td>" . date('d.m.Y', strtotime($s['start_time'])) . "</td><td>" . htmlspecialchars($s['name']) . "</td><td>" . htmlspecialchars($s['position']) . "</td><td>" . date('H:i', strtotime($s['start_time'])) . "</td><td>" . date('H:i', strtotime($s['end_time'])) . "</td><td>" . number_format($hours, 2) . "</td><td>" . htmlspecialchars($s['note']) . "</td></tr>";
-        }
-        echo <<<HTML
-        </tbody>
+        <thead><tr>{$tableHeader}</tr></thead>
+        <tbody>{$tableRows}</tbody>
     </table>
 </div>
 </body>
 </html>
 HTML;
-        exit;
     }
-    private function validateData(array $data, array $fields): void { foreach ($fields as $f) { if (empty($data[$f]) && !is_numeric($data[$f]) && $f !== 'note') $this->sendResponse(400, ['error' => "Chybějící pole: {$f}"]); }}
+
+    private function validateData(array $data, array $fields): void { foreach ($fields as $f) { if (empty($data[$f]) && !is_numeric($data[$f]) && $f !== 'note') $this->sendResponse(400, ['error' => "Chybí povinný údaj: {$f}"]); }}
     private function sendResponse(int $code, array $data): void { if (ob_get_level()) ob_end_clean(); http_response_code($code); header('Content-Type: application/json; charset=utf-8'); echo json_encode($data, JSON_NUMERIC_CHECK | JSON_PRETTY_PRINT); exit(); }
 }
 
@@ -239,7 +388,6 @@ if (isset($_GET['setup'])) { setupDatabase(Database::getInstance()); exit; }
             --accent-color-hover: #818CF8;
         }
         
-        /* Zásadní oprava: Zabraňuje horizontálnímu posuvníku na celé stránce */
         html, body {
             width: 100%;
             overflow-x: hidden;
@@ -255,16 +403,12 @@ if (isset($_GET['setup'])) { setupDatabase(Database::getInstance()); exit; }
 
         [v-cloak] { display: none; }
 
-        /* Přechody pro Vue */
         .fade-enter-active, .fade-leave-active { transition: opacity 0.3s ease; }
         .fade-enter-from, .fade-leave-to { opacity: 0; }
         .modal-bg-enter-active, .modal-bg-leave-active { transition: opacity 0.3s ease; }
         .modal-bg-enter-from, .modal-bg-leave-to { opacity: 0; }
         .modal-panel-enter-active, .modal-panel-leave-active { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
         .modal-panel-enter-from, .modal-panel-leave-to { opacity: 0; transform: scale(0.95); }
-        .card-enter-active { transition: all 0.5s cubic-bezier(0.25, 0.8, 0.25, 1); }
-        .card-enter-from { opacity: 0; transform: translateY(30px); }
-        .card-move { transition: transform 0.5s ease; }
         
         .progress-circle { transform: rotate(-90deg); }
 
@@ -272,7 +416,6 @@ if (isset($_GET['setup'])) { setupDatabase(Database::getInstance()); exit; }
         html.dark .theme-toggle-icon .sun { transform: scale(1.5) rotate(90deg); opacity: 0; }
         html:not(.dark) .theme-toggle-icon .moon { transform: scale(0.5) rotate(-90deg); opacity: 0; }
 
-        /* Vylepšený styl pro karty a formuláře */
         .dashboard-card {
             background-color: var(--secondary-bg);
             border-radius: 0.75rem;
@@ -319,7 +462,10 @@ if (isset($_GET['setup'])) { setupDatabase(Database::getInstance()); exit; }
                     </nav>
                 </div>
                 <div class="flex items-center gap-2 sm:gap-4">
-                    <button @click="toggleDarkMode" class="theme-toggle-icon relative h-9 w-9 text-[var(--muted-text)] hover:text-[var(--accent-color)] flex items-center justify-center rounded-full hover:bg-black/5 dark:hover:bg-white/5 transition-colors duration-200" aria-label="Přepnout motiv"><svg class="sun absolute inset-0 p-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.25a.75.75 0 01.75.75v2.25a.75.75 0 01-1.5 0V3a.75.75 0 01.75-.75zM7.5 12a4.5 4.5 0 119 0 4.5 4.5 0 01-9 0zM18.894 6.106a.75.75 0 011.06-1.06l1.591 1.59a.75.75 0 11-1.06 1.06l-1.591-1.59zM21.75 12a.75.75 0 01-.75.75h-2.25a.75.75 0 010-1.5h2.25a.75.75 0 01.75.75zM17.894 18.894a.75.75 0 011.06 1.06l-1.59 1.591a.75.75 0 11-1.06-1.06l1.59-1.591zM12 18.75a.75.75 0 01.75.75v2.25a.75.75 0 01-1.5 0v-2.25a.75.75 0 01.75-.75zM5.106 17.894a.75.75 0 011.06-1.06l1.591 1.59a.75.75 0 11-1.06 1.06l-1.591-1.59zM3 12a.75.75 0 01.75-.75h2.25a.75.75 0 010 1.5H3.75A.75.75 0 013 12zM6.106 5.106a.75.75 0 011.06 1.06l-1.59 1.591a.75.75 0 01-1.06-1.06l1.59-1.591z"/></svg><svg class="moon absolute inset-0 p-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M9.528 1.718a.75.75 0 01.162.819A8.97 8.97 0 009 6a9 9 0 009 9 8.97 8.97 0 004.463-.948.75.75 0 01.976.976 10.5 10.5 0 11-9.9-9.9.75.75 0 01.819.162z" clip-rule="evenodd" /></svg></button>
+                    <button @click="toggleDarkMode" class="theme-toggle-icon relative h-10 w-10 text-[var(--muted-text)] hover:text-[var(--accent-color)] flex items-center justify-center rounded-full hover:bg-black/5 dark:hover:bg-white/5 transition-colors duration-200" aria-label="Přepnout denní/noční motiv">
+                        <svg class="sun absolute inset-0 p-2.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.25a.75.75 0 01.75.75v2.25a.75.75 0 01-1.5 0V3a.75.75 0 01.75-.75zM7.5 12a4.5 4.5 0 119 0 4.5 4.5 0 01-9 0zM18.894 6.106a.75.75 0 011.06-1.06l1.591 1.59a.75.75 0 11-1.06 1.06l-1.591-1.59zM21.75 12a.75.75 0 01-.75.75h-2.25a.75.75 0 010-1.5h2.25a.75.75 0 01.75.75zM17.894 18.894a.75.75 0 011.06 1.06l-1.59 1.591a.75.75 0 11-1.06-1.06l1.59-1.591zM12 18.75a.75.75 0 01.75.75v2.25a.75.75 0 01-1.5 0v-2.25a.75.75 0 01.75-.75zM5.106 17.894a.75.75 0 011.06-1.06l1.591 1.59a.75.75 0 11-1.06 1.06l-1.591-1.59zM3 12a.75.75 0 01.75-.75h2.25a.75.75 0 010 1.5H3.75A.75.75 0 013 12zM6.106 5.106a.75.75 0 011.06 1.06l-1.59 1.591a.75.75 0 01-1.06-1.06l1.59-1.591z"/></svg>
+                        <svg class="moon absolute inset-0 p-2.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M9.528 1.718a.75.75 0 01.162.819A8.97 8.97 0 009 6a9 9 0 009 9 8.97 8.97 0 004.463-.948.75.75 0 01.976.976 10.5 10.5 0 11-9.9-9.9.75.75 0 01.819.162z" clip-rule="evenodd" /></svg>
+                    </button>
                     <div class="-mr-2 flex md:hidden"><button @click="mobileMenuOpen=!mobileMenuOpen" type="button" class="inline-flex items-center justify-center rounded-md p-2 text-[var(--muted-text)] hover:bg-black/5 dark:hover:bg-white/5" aria-controls="mobile-menu" aria-expanded="false"><span class="sr-only">Otevřít menu</span><svg :class="{'hidden':mobileMenuOpen,'block':!mobileMenuOpen}" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" /></svg><svg :class="{'block':mobileMenuOpen,'hidden':!mobileMenuOpen}" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg></button></div>
                 </div>
             </div>
@@ -335,8 +481,12 @@ if (isset($_GET['setup'])) { setupDatabase(Database::getInstance()); exit; }
                     <div class="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
                         <select v-if="state.employees.length>0" v-model="activeFilter.employeeId" class="form-input !py-2.5 w-full md:w-auto flex-grow"><option value="all">Všichni zaměstnanci</option><template v-for="(group,department) in groupedEmployees"><optgroup :label="department"><option v-for="emp in group" :key="emp.id" :value="emp.id">{{emp.name}}</option></optgroup></template></select>
                         <div v-if="state.view==='calendar'" class="flex gap-2 w-full md:w-auto">
-                            <button @click="exportToXLS" class="w-full md:w-auto bg-green-100 hover:bg-green-200 text-green-800 dark:bg-green-800/50 dark:hover:bg-green-800/80 dark:text-green-100 font-bold py-2 px-3 text-sm rounded-lg transition-colors flex items-center justify-center gap-2">XLS</button>
-                            <button @click="exportToPDF" class="w-full md:w-auto bg-red-100 hover:bg-red-200 text-red-800 dark:bg-red-800/50 dark:hover:bg-red-800/80 dark:text-red-100 font-bold py-2 px-3 text-sm rounded-lg transition-colors flex items-center justify-center gap-2">PDF</button>
+                            <button @click="exportToPDF" class="w-full md:w-auto bg-green-100 hover:bg-green-200 text-green-800 dark:bg-green-800/50 dark:hover:bg-green-800/80 dark:text-green-100 font-bold py-2 px-3 text-sm rounded-lg transition-colors flex items-center justify-center gap-2">PDF</button>
+                        </div>
+                        <div v-if="state.view==='dashboard'" class="flex gap-2 w-full md:w-auto">
+                            <button @click="exportDashboardToPDF" class="w-full md:w-auto bg-green-100 hover:bg-green-200 text-green-800 dark:bg-green-800/50 dark:hover:bg-green-800/80 dark:text-green-100 font-bold py-2 px-4 text-sm rounded-lg transition-colors flex items-center justify-center gap-2">
+                                Exportovat přehled
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -353,7 +503,7 @@ if (isset($_GET['setup'])) { setupDatabase(Database::getInstance()); exit; }
                                 <div class="flex justify-between items-center mb-1"><span class="font-bold" :class="{'text-[var(--accent-color)]': isToday(day)}">{{day}}</span></div>
                                 <button v-if="!isPast(day)" @click.stop="openAddModal(getDateString(day))" class="absolute top-1 right-1 text-[var(--accent-color)] bg-[var(--accent-color)]/10 hover:bg-[var(--accent-color)]/20 rounded-full w-7 h-7 flex items-center justify-center transition opacity-0 group-hover:opacity-100 focus:opacity-100" title="Přidat směnu"><svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" /></svg></button>
                                 <div class="flex-grow space-y-1 overflow-hidden">
-                                    <div v-for="(shift, index) in getShiftsForDay(day)" v-show="index < calendarShiftLimit" class="text-xs font-semibold px-2 py-1 rounded-md truncate" :style="{backgroundColor:shift.color,color:getContrastColor(shift.color)}" :title="getShiftTitle(shift)"><span class="font-bold">{{formatTime(shift.start_time)}}</span> {{shift.name}}</div>
+                                    <div v-for="(shift, index) in getShiftsForDay(day)" v-show="index < calendarShiftLimit" class="text-xs font-semibold px-2 py-1 rounded-md truncate" :class="{'!border-2 !border-dashed !border-slate-400 dark:!border-slate-500': shift.name === 'Výpomoc'}" :style="{backgroundColor:shift.color,color:getContrastColor(shift.color)}" :title="getShiftTitle(shift)"><span class="font-bold">{{formatTime(shift.start_time)}}</span> {{shift.name}}</div>
                                     <div v-if="getShiftsForDay(day).length > calendarShiftLimit" class="text-xs font-semibold text-[var(--muted-text)] text-center py-1">+ {{ getShiftsForDay(day).length - calendarShiftLimit }} další...</div>
                                 </div>
                             </div>
@@ -362,7 +512,7 @@ if (isset($_GET['setup'])) { setupDatabase(Database::getInstance()); exit; }
                             <div v-for="day in calendar.daysInMonth" :key="day" @click="openDayDetailModal(getDateString(day))" class="bg-[var(--secondary-bg)] rounded-xl p-4 shadow-sm border cursor-pointer active:scale-[0.98] transition-transform" :class="[isToday(day) ? 'border-[var(--accent-color)]' : 'border-[var(--border-color)]', isPast(day) ? 'opacity-60' : '']">
                                 <div class="flex justify-between items-center mb-3"><div class="flex items-center gap-3"><span class="font-extrabold text-lg w-8 h-8 flex items-center justify-center rounded-full" :class="{'bg-[var(--accent-color)] text-white': isToday(day)}">{{day}}</span><span class="font-semibold text-sm text-[var(--muted-text)] capitalize">{{ getDayName(day) }}</span></div><button v-if="!isPast(day)" @click.stop="openAddModal(getDateString(day))" class="text-[var(--accent-color)] bg-[var(--accent-color)]/10 rounded-full w-8 h-8 flex items-center justify-center transition" title="Přidat směnu"><svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" /></svg></button></div>
                                 <div class="space-y-2">
-                                    <div v-if="getShiftsForDay(day).length > 0" v-for="shift in getShiftsForDay(day)" class="font-semibold p-2.5 rounded-lg flex items-center gap-3 text-sm" :style="{backgroundColor:shift.color, color:getContrastColor(shift.color)}"><div class="font-bold">{{formatTime(shift.start_time)}} - {{formatTime(shift.end_time)}}</div><div>{{shift.name}}</div><div class="ml-auto text-xs opacity-80" v-if="shift.note">{{shift.note}}</div></div>
+                                    <div v-if="getShiftsForDay(day).length > 0" v-for="shift in getShiftsForDay(day)" class="font-semibold p-2.5 rounded-lg flex items-center gap-3 text-sm" :class="{'!border-2 !border-dashed !border-slate-400 dark:!border-slate-500': shift.name === 'Výpomoc'}" :style="{backgroundColor:shift.color, color:getContrastColor(shift.color)}"><div class="font-bold">{{formatTime(shift.start_time)}} - {{formatTime(shift.end_time)}}</div><div>{{shift.name}}</div><div class="ml-auto text-xs opacity-80" v-if="shift.note">{{shift.note}}</div></div>
                                     <div v-else class="text-center text-sm text-[var(--muted-text)] py-4">Žádné směny</div>
                                 </div>
                             </div>
@@ -404,7 +554,7 @@ if (isset($_GET['setup'])) { setupDatabase(Database::getInstance()); exit; }
         <div v-if="modal.type" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-40" @click="closeModal"></div>
     </transition>
     <transition name="modal-panel">
-        <div v-if="modal.type" class="fixed inset-0 z-50 flex items-center justify-center">
+        <div v-if="modal.type" class="fixed inset-0 z-50 flex items-center justify-center p-4">
             <div @click.stop class="bg-[var(--secondary-bg)] flex flex-col pointer-events-auto rounded-xl shadow-2xl max-h-[90vh] w-[90%] md:w-full" :class="modal.type === 'edit-add' ? 'md:max-w-md' : 'md:max-w-lg'">
                 <template v-if="modal.type === 'edit-add'">
                     <div class="flex items-center justify-between p-4 sm:p-5 border-b border-[var(--border-color)] flex-shrink-0">
@@ -413,14 +563,23 @@ if (isset($_GET['setup'])) { setupDatabase(Database::getInstance()); exit; }
                     </div>
                     <form @submit.prevent="handleFormSubmit" class="p-4 sm:p-5 space-y-4 overflow-y-auto">
                         <div><label class="block text-sm font-medium text-[var(--muted-text)] mb-1">Zaměstnanec</label><select v-model="shiftForm.employee_id" required class="form-input" :disabled="modal.isEdit"><option disabled value="">Vyberte...</option><template v-for="(group,department) in groupedEmployees"><optgroup :label="department"><option v-for="emp in group" :key="emp.id" :value="emp.id">{{emp.name}}</option></optgroup></template></select></div>
-                        <div><label class="block text-sm font-medium text-[var(--muted-text)] mb-1">Datum</label><input type="date" v-model="shiftForm.date" required class="form-input"></div>
+                        <div><label class="block text-sm font-medium text-[var(--muted-text)] mb-1">Datum</label><input type="date" v-model="shiftForm.date" :min="todayISO" required class="form-input"></div>
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4"><div><label class="block text-sm font-medium text-[var(--muted-text)] mb-1">Od</label><input type="time" v-model="shiftForm.start_time" required class="form-input"></div><div><label class="block text-sm font-medium text-[var(--muted-text)] mb-1">Do</label><input type="time" v-model="shiftForm.end_time" required class="form-input"></div></div>
-                        <div><label class="block text-sm font-medium text-[var(--muted-text)] mb-1">Poznámka</label><textarea v-model="shiftForm.note" rows="3" class="form-input"></textarea></div>
+                        <transition name="fade" mode="out-in">
+                            <div v-if="shiftForm.employee_id == vypomocEmployeeId">
+                                <label for="vypomoc-name" class="block text-sm font-medium text-[var(--muted-text)] mb-1">Jméno výpomoci (povinné)</label>
+                                <input id="vypomoc-name" type="text" v-model.trim="shiftForm.note" placeholder="Zadejte jméno" class="form-input">
+                            </div>
+                            <div v-else>
+                                <label for="note" class="block text-sm font-medium text-[var(--muted-text)] mb-1">Poznámka</label>
+                                <textarea id="note" v-model="shiftForm.note" rows="3" class="form-input" placeholder="Nepovinná poznámka..."></textarea>
+                            </div>
+                        </transition>
                     </form>
                     <div class="p-4 sm:p-5 mt-auto flex flex-col-reverse sm:flex-row sm:justify-end items-center gap-3 border-t border-[var(--border-color)] bg-[var(--main-bg)] rounded-b-xl flex-shrink-0">
                         <div class="flex flex-col sm:flex-row justify-end gap-3 w-full sm:w-auto">
                             <button type="button" @click="closeModal" class="w-full sm:w-auto px-4 py-2.5 rounded-lg font-semibold bg-gray-200 hover:bg-gray-300 dark:bg-slate-600 dark:hover:bg-slate-500 transition-colors">Zrušit</button>
-                            <button type="submit" @click="handleFormSubmit" class="w-full sm:w-auto px-4 py-2.5 rounded-lg font-semibold text-white bg-[var(--accent-color)] hover:bg-[var(--accent-color-hover)] transition-colors">Uložit</button>
+                            <button type="submit" @click="handleFormSubmit" class="w-full sm:w-auto px-4 py-2.5 rounded-lg font-semibold text-white bg-[var(--accent-color)] hover:bg-[var(--accent-color-hover)] transition-colors">Uložit směnu</button>
                         </div>
                     </div>
                 </template>
@@ -428,7 +587,7 @@ if (isset($_GET['setup'])) { setupDatabase(Database::getInstance()); exit; }
                     <div class="flex items-center justify-between p-4 sm:p-5 border-b border-[var(--border-color)] flex-shrink-0">
                         <div class="flex items-center gap-4">
                             <h2 class="text-lg font-bold">Směny pro {{ modal.dayTitle }}</h2>
-                            <button v-if="!isPast(modal.dayDate.split('-')[2])" @click="addNewShiftFromDetail" class="text-[var(--accent-color)] bg-[var(--accent-color)]/10 hover:bg-[var(--accent-color)]/20 rounded-full w-8 h-8 flex items-center justify-center transition" title="Přidat novou směnu"><svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" /></svg></button>
+                            <button v-if="!isPast(parseInt(modal.dayDate.split('-')[2], 10))" @click="addNewShiftFromDetail" class="text-[var(--accent-color)] bg-[var(--accent-color)]/10 hover:bg-[var(--accent-color)]/20 rounded-full w-8 h-8 flex items-center justify-center transition" title="Přidat novou směnu"><svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" /></svg></button>
                         </div>
                         <button @click="closeModal" class="p-1 rounded-full hover:bg-black/10 dark:hover:bg-white/10 text-[var(--muted-text)]" aria-label="Zavřít"><svg class="w-6 h-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg></button>
                     </div>
@@ -441,17 +600,12 @@ if (isset($_GET['setup'])) { setupDatabase(Database::getInstance()); exit; }
                                 </div>
                                 <div class="text-sm opacity-80 mt-1" v-if="shift.note">{{shift.note}}</div>
                             </div>
-                            <div class="flex items-center gap-1 flex-shrink-0">
-                                <button @click.stop="openEditModal(shift.id)" class="p-2 rounded-full hover:bg-black/20 transition-colors" title="Upravit směnu">
-                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                                        <path d="M17.414 2.586a2 2 0 00-2.828 0L7 10.172V13h2.828l7.586-7.586a2 2 0 000-2.828z" />
-                                        <path fill-rule="evenodd" d="M2 6a2 2 0 012-2h4a1 1 0 010 2H4v10h10v-4a1 1 0 112 0v4a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" clip-rule="evenodd" />
-                                    </svg>
+                            <div v-if="!isPast(parseInt(modal.dayDate.split('-')[2], 10))" class="flex items-center gap-1 flex-shrink-0">
+                                <button @click.stop="openEditModal(shift)" class="p-2 rounded-full hover:bg-black/20 transition-colors" title="Upravit směnu">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M17.414 2.586a2 2 0 00-2.828 0L7 10.172V13h2.828l7.586-7.586a2 2 0 000-2.828z" /><path fill-rule="evenodd" d="M2 6a2 2 0 012-2h4a1 1 0 010 2H4v10h10v-4a1 1 0 112 0v4a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" clip-rule="evenodd" /></svg>
                                 </button>
                                 <button @click.stop="handleDeleteFromDetail(shift)" class="p-2 rounded-full hover:bg-black/20 transition-colors" title="Smazat směnu">
-                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                                        <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clip-rule="evenodd" />
-                                    </svg>
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clip-rule="evenodd" /></svg>
                                 </button>
                             </div>
                         </div>
@@ -493,7 +647,17 @@ createApp({
 
             // --- COMPUTED & WATCHERS ---
             const activeFilter = computed(() => state.view === 'calendar' ? state.calendarFilter : state.dashboardFilter);
+            const vypomocEmployeeId = computed(() => {
+                const emp = state.employees.find(e => e.name.trim() === 'Výpomoc');
+                return emp ? emp.id : null;
+            });
+
             watch(() => activeFilter.value.employeeId, fetchData);
+            watch(() => shiftForm.employee_id, (newId, oldId) => {
+                if (oldId == vypomocEmployeeId.value && newId != vypomocEmployeeId.value) {
+                    shiftForm.note = '';
+                }
+            });
 
             // --- API & DATA ---
             async function apiRequest(action, method = 'GET', body = null, params = {}) {
@@ -504,7 +668,7 @@ createApp({
                     const response = await fetch(url, { method, headers: body ? { 'Content-Type': 'application/json', 'Accept': 'application/json' } : { 'Accept': 'application/json' }, body: body ? JSON.stringify(body) : null });
                     if (!response.ok) { let errorMsg = `Chyba serveru (${response.status})`; try { const data = await response.json(); errorMsg = data.error || errorMsg; } catch (e) { /* ignore */ } throw new Error(errorMsg); }
                     return await response.json();
-                } catch (error) { showToast(error.message || 'Došlo k chybě sítě', 'error'); return null; }
+                } catch (error) { showToast(error.message || 'Chyba sítě. Zkontrolujte připojení k internetu.', 'error'); return null; }
             }
 
             async function fetchData() {
@@ -523,20 +687,48 @@ createApp({
 
             // --- USER ACTIONS ---
             async function handleDeleteFromDetail(shiftToDelete) {
-                if (!confirm(`Opravdu si přejete smazat směnu pro ${shiftToDelete.name}? Zaměstnanci se přičte bod za smazanou směnu.`)) return;
+                let confirmMessage = `Opravdu chcete smazat směnu pro ${shiftToDelete.name}?`;
+                const shiftDate = new Date(shiftToDelete.start_time);
+                const today = new Date();
+                today.setHours(0,0,0,0);
+                const sevenDaysFromNow = new Date();
+                sevenDaysFromNow.setDate(today.getDate() + 7);
+
+                if (shiftDate >= sevenDaysFromNow) {
+                    confirmMessage += '\n\nTato směna bude přeplánována (zcela smazána bez záznamu).';
+                } else {
+                     confirmMessage += '\n\nTato akce bude zaznamenána a vykázána jako smazaná směna.';
+                }
+                
+                if (shiftDate.toDateString() === today.toDateString()) {
+                    confirmMessage = `POZOR: Mažete směnu v den jejího konání!\n\nOpravdu chcete smazat směnu pro ${shiftToDelete.name}?\nUjistěte se, že je za zaměstnance domluvena náhrada. Tato akce bude vykázána jako smazaná směna.`;
+                }
+
+                if (!confirm(confirmMessage)) return;
+
                 const result = await apiRequest('delete_shift', 'POST', { id: shiftToDelete.id });
                 if (result) {
                     showToast(result.message, 'success');
-                    const index = modal.shifts.findIndex(s => s.id === shiftToDelete.id);
-                    if (index > -1) {
-                        modal.shifts.splice(index, 1);
-                    }
                     await fetchData();
+                    modal.shifts = modal.shifts.filter(s => s.id !== shiftToDelete.id);
+                    if (modal.shifts.length === 0) {
+                        closeModal();
+                    }
                 }
             }
             
             async function handleFormSubmit() {
-                const body = { ...shiftForm, start_time: `${shiftForm.date} ${shiftForm.start_time}:00`, end_time: `${shiftForm.date} ${shiftForm.end_time}:00` };
+                if (shiftForm.employee_id == vypomocEmployeeId.value && (!shiftForm.note || shiftForm.note.trim() === '')) {
+                    showToast('U směny pro "Výpomoc" je nutné zadat jméno.', 'error');
+                    return;
+                }
+                
+                const body = {
+                    ...shiftForm,
+                    start_time: `${shiftForm.date} ${shiftForm.start_time}:00`,
+                    end_time: `${shiftForm.date} ${shiftForm.end_time}:00`,
+                };
+                
                 const result = await apiRequest(body.id ? 'update_shift' : 'create_shift', 'POST', body);
                 if (result) { showToast(result.message, 'success'); closeModal(); await fetchData(); }
             }
@@ -548,12 +740,16 @@ createApp({
             const getDateString = (day) => `${calendar.value.y}-${String(calendar.value.m + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
             const getShiftsForDay = (day) => state.shifts.filter(s => s.start_time.startsWith(getDateString(day)));
             const isToday = (day) => todayISO === getDateString(day);
-            const isPast = (day) => todayISO > getDateString(day);
+            const isPast = (day) => {
+                const date = new Date(getDateString(day));
+                const today = new Date(todayISO);
+                return date < today;
+            };
             function setView(newView) { if (state.view === newView) return; state.view = newView; const url = new URL(window.location); url.searchParams.set('view', newView); window.history.pushState({}, '', url); fetchData(); }
             async function changeMonth(dir) { state.currentDate = new Date(state.currentDate.setMonth(state.currentDate.getMonth() + dir, 1)); await fetchData(); }
             function closeModal() { modal.type = null; }
             function openAddModal(date) { Object.assign(shiftForm, { id: null, employee_id: '', date, start_time: '09:15', end_time: '21:15', note: '' }); modal.isEdit = false; modal.type = 'edit-add'; }
-            function openEditModal(id) { const shift = state.shifts.find(s => s.id == id); if (!shift) return; Object.assign(shiftForm, { id: shift.id, employee_id: shift.employee_id, date: shift.start_time.split(' ')[0], start_time: shift.start_time.split(' ')[1].substring(0, 5), end_time: shift.end_time.split(' ')[1].substring(0, 5), note: shift.note }); modal.isEdit = true; modal.type = 'edit-add'; }
+            function openEditModal(shift) { if (!shift) return; Object.assign(shiftForm, { id: shift.id, employee_id: shift.employee_id, date: shift.start_time.split(' ')[0], start_time: shift.start_time.split(' ')[1].substring(0, 5), end_time: shift.end_time.split(' ')[1].substring(0, 5), note: shift.note }); modal.isEdit = true; modal.type = 'edit-add'; }
             function openDayDetailModal(dateStr) { const day = parseInt(dateStr.split('-')[2], 10); modal.shifts = getShiftsForDay(day); modal.dayTitle = `${day}. ${state.currentDate.toLocaleString('cs-CZ', { month: 'long' })}`; modal.dayDate = dateStr; modal.type = 'day-detail'; }
             function addNewShiftFromDetail() { openAddModal(modal.dayDate); }
             function showToast(message, type = 'success') { toast.message = message; toast.type = type; toast.visible = true; clearTimeout(toast.timeoutId); toast.timeoutId = setTimeout(() => { toast.visible = false; }, 3000); }
@@ -563,8 +759,8 @@ createApp({
             const formatTime = (dt) => new Date(dt).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' });
             const describeArc = (x, y, radius, startAngle, endAngle) => { if (endAngle >= 360) { endAngle = 359.99; } const polarToCartesian = (centerX, centerY, radius, angleInDegrees) => { const angleInRadians = (angleInDegrees - 90) * Math.PI / 180.0; return { x: centerX + (radius * Math.cos(angleInRadians)), y: centerY + (radius * Math.sin(angleInRadians)) }; }; const start = polarToCartesian(x, y, radius, endAngle); const end = polarToCartesian(x, y, radius, startAngle); const largeArcFlag = endAngle - startAngle <= 180 ? "0" : "1"; return ["M", start.x, start.y, "A", radius, radius, 0, largeArcFlag, 0, end.x, end.y].join(" "); };
             const getDayName = (day) => { const date = new Date(calendar.value.y, calendar.value.m, day); return date.toLocaleDateString('cs-CZ', { weekday: 'long' }); };
-            function exportToXLS() { const { year, month } = { year: state.currentDate.getFullYear(), month: state.currentDate.getMonth() + 1 }; const employeeId = activeFilter.value.employeeId; window.open(`?api=true&action=export_xls&year=${year}&month=${month}&employeeId=${employeeId}`, '_blank'); }
             function exportToPDF() { const { year, month } = { year: state.currentDate.getFullYear(), month: state.currentDate.getMonth() + 1 }; const employeeId = activeFilter.value.employeeId; window.open(`?api=true&action=get_print_view&year=${year}&month=${month}&employeeId=${employeeId}`, '_blank'); }
+            function exportDashboardToPDF() { const { year, month } = { year: state.currentDate.getFullYear(), month: state.currentDate.getMonth() + 1 }; window.open(`?api=true&action=get_dashboard_print_view&year=${year}&month=${month}`, '_blank'); }
             
             // --- LIFECYCLE HOOK ---
             onMounted(() => {
@@ -575,15 +771,15 @@ createApp({
                 fetchData(); 
             });
 
-            return { state, modal, shiftForm, toast, monthYear, calendar, isToday, isPast, isDarkMode, groupedEmployees, activeFilter, mobileMenuOpen, calendarShiftLimit, changeMonth, openAddModal, openEditModal, openDayDetailModal, closeModal, handleFormSubmit, handleDeleteFromDetail, getShiftsForDay, getDateString, showToast, toggleDarkMode, getContrastColor, getShiftTitle, formatTime, exportToXLS, exportToPDF, describeArc, getDayName, addNewShiftFromDetail, setView };
+            return { state, modal, shiftForm, toast, monthYear, calendar, isToday, isPast, todayISO, isDarkMode, groupedEmployees, activeFilter, mobileMenuOpen, calendarShiftLimit, vypomocEmployeeId, changeMonth, openAddModal, openEditModal, openDayDetailModal, closeModal, handleFormSubmit, handleDeleteFromDetail, getShiftsForDay, getDateString, showToast, toggleDarkMode, getContrastColor, getShiftTitle, formatTime, exportToPDF, exportDashboardToPDF, describeArc, getDayName, addNewShiftFromDetail, setView };
 
         } catch (e) {
             console.error("Chyba při inicializaci Vue aplikace:", e);
             const appDiv = document.getElementById('app');
             if (appDiv) {
                 appDiv.innerHTML = `<div style="padding: 2rem; text-align: center; font-family: sans-serif; background-color: #fffbe6; border: 1px solid #facc15; color: #713f12; border-radius: 0.5rem; margin: 2rem;">
-                    <h1 style="font-size: 1.5rem; font-weight: bold; margin-bottom: 0.5rem;">Chyba při inicializaci aplikace</h1>
-                    <p>Aplikaci se nepodařilo spustit. Zkuste prosím obnovit stránku. Pokud problém přetrvává, zkontrolujte konzoli prohlížeče (F12) pro více detailů.</p>
+                    <h1 style="font-size: 1.5rem; font-weight: bold; margin-bottom: 0.5rem;">Došlo k chybě aplikace</h1>
+                    <p>Aplikaci se nepodařilo správně spustit. Zkuste prosím obnovit stránku. Pokud problém přetrvává, zkontrolujte konzoli prohlížeče (F12) pro technické detaily.</p>
                     <pre style="margin-top: 1rem; padding: 1rem; background-color: #f3f4f6; border-radius: 0.25rem; text-align: left; white-space: pre-wrap; word-break: break-all;">${e.stack}</pre>
                 </div>`;
             }
