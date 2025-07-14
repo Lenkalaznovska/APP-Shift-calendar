@@ -39,8 +39,11 @@ This project is designed as a single-file monolithic application (`index.php`) t
 
 - **PHP 8+** – RESTful API architecture using object-oriented principles (e.g., `ApiController`, `Database` classes).
 - **MySQL / MariaDB** – Relational database, accessed securely via `PDO` to prevent SQL injection.
-- XAMPP: Local web server containing Apache, MySQL, and PHP.
 
+### 🧰 Development Tools
+
+- **XAMPP** – local server with Apache, MySQL, and PHP  
+- **Apache** – running the PHP application on a web server
 ---
 
 ## 🗃️ Database Schema
