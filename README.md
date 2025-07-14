@@ -14,7 +14,7 @@ A modern, professional-grade single-page application (SPA) for efficient employe
 ## ✨ Key Features
 
 - **Single Page Application (SPA)**: Seamless and fast user interface without any page reloads.
-- **Interactive Calendar**: Drag-and-drop interface for scheduling, editing, and deleting shifts.
+- **Interactive Calendar**: creating, editing, and deleting shifts.
 - **Advanced Dashboard**: Monthly statistics including total hours, shift counts, and workload distribution.
 - **Dynamic Filtering & Export**: Filter by employee and export calendar or dashboard as print-ready PDF.
 - **Full CRUD Functionality**: Create, read, update, and delete shifts with built-in validations.
